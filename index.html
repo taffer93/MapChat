@@ -2,7 +2,9 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>MapChat - Znajdź ludzi w okolicy</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -96,6 +98,15 @@
             object-fit: cover !important;
         }
         .custom-marker { background: transparent !important; border: none !important; }
+        
+        /* Mobile fixes */
+        @supports (-webkit-touch-callout: none) {
+            #mainApp { height: -webkit-fill-available; }
+        }
+        @media (max-width: 768px) {
+            #userHoverCard { display: none !important; }
+            .chat-window { width: 85vw !important; max-width: 320px; }
+        }
         .tinder-card {
             animation: cardIn 0.3s ease;
         }
@@ -588,7 +599,7 @@
     </div>
 
     <!-- Main App -->
-    <div id="mainApp" class="hidden h-screen flex flex-col">
+    <div id="mainApp" class="hidden flex flex-col" style="height: 100vh; height: 100dvh;">
         <header class="bg-gray-800 px-4 py-3 flex items-center justify-between shadow-lg z-10">
             <div class="flex items-center gap-3">
                 <span class="text-2xl">🗺️</span>
@@ -658,8 +669,8 @@
         let totalUnreadCount = 0;
         let originalTitle = 'MapChat - Znajdź ludzi w okolicy';
         let heartbeatInterval = null;
-        const HEARTBEAT_INTERVAL = 15000;
-        const ONLINE_TIMEOUT = 30000;
+        const HEARTBEAT_INTERVAL = 30000;  // 30 sekund
+        const ONLINE_TIMEOUT = 120000;   // 2 minuty - żeby nie znikać przy przełączaniu kart
         
         // Tinder state
         let tinderUsers = [];
@@ -2551,6 +2562,9 @@
             closeInstructions();
         }
 
+        // Detect touch device
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
         function addUserMarker(user, isCurrentUser = false) {
             if (!user.lat || !user.lng) return;
             const icon = L.divIcon({
@@ -2560,8 +2574,11 @@
                 iconAnchor: [25, 25]
             });
             const marker = L.marker([user.lat, user.lng], { icon }).addTo(map);
-            marker.on('mouseover', (e) => showUserHoverCard(user, e.originalEvent));
-            marker.on('mouseout', () => hideUserHoverCard());
+            // Show hover card only on non-touch devices
+            if (!isTouchDevice) {
+                marker.on('mouseover', (e) => showUserHoverCard(user, e.originalEvent));
+                marker.on('mouseout', () => hideUserHoverCard());
+            }
             if (!isCurrentUser) marker.on('click', () => openChatWindow(user));
             userMarkers[user.id] = marker;
         }
@@ -2697,6 +2714,7 @@
                         <p class="font-semibold text-sm truncate">${user.name} ${isUserAdmin ? '👑' : ''} ${isMatch ? '<span class="text-pink-400">💕</span>' : ''}</p>
                         <p class="text-xs text-gray-400 truncate">${isMatch ? '💕 Macie match!' : user.status}</p>
                     </div>
+                    <button class="profile-btn p-1 hover:bg-gray-500 rounded transition" data-user-id="${user.id}" title="Zobacz profil">👤</button>
                     ${!isUserAdmin ? `<button class="report-btn p-1 hover:bg-red-500/50 rounded transition text-red-400" data-user-id="${user.id}" title="Zgłoś">🚨</button>` : ''}
                     <button class="minimize-chat p-1 hover:bg-gray-500 rounded transition" data-user-id="${user.id}" title="Minimalizuj">➖</button>
                     <button class="close-chat p-1 hover:bg-gray-500 rounded transition" data-user-id="${user.id}" title="Zamknij">✕</button>
@@ -2716,6 +2734,8 @@
                 </div>
             `;
             container.appendChild(chatWindow);
+            const profileBtn = chatWindow.querySelector('.profile-btn');
+            if (profileBtn) profileBtn.addEventListener('click', (e) => { e.stopPropagation(); showChatUserProfile(user.id); });
             const reportBtn = chatWindow.querySelector('.report-btn');
             if (reportBtn) reportBtn.addEventListener('click', (e) => { e.stopPropagation(); openReportModal(user.id); });
             chatWindow.querySelector('.minimize-chat').addEventListener('click', (e) => { e.stopPropagation(); minimizeChatWindow(user.id); });
@@ -2764,6 +2784,16 @@
             unreadMessages[userId] = 0;
             updateChatBubbles();
             updateTitleBadge();
+        }
+
+        function showChatUserProfile(userId) {
+            const user = cachedUsers[userId] || onlineUsers[userId];
+            if (!user) return;
+            openTinder();
+            setTimeout(() => {
+                cachedUsers[userId] = user;
+                showProfileInList(userId, 'matches');
+            }, 300);
         }
 
         function renderMessages(userId) {
