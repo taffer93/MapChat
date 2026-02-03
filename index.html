@@ -1,1 +1,2855 @@
-aaa
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MapChat - Znajdź ludzi w okolicy</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <script>
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBtUu8Vgt0aHJl-dtANykH1TrpAa-to3t0",
+            authDomain: "mapchat1337.firebaseapp.com",
+            projectId: "mapchat1337",
+            storageBucket: "mapchat1337.firebasestorage.app",
+            messagingSenderId: "392043701179",
+            appId: "1:392043701179:web:c47e3bb6fb7af9018a1a9e"
+        };
+    </script>
+    
+    <style>
+        #map { height: 100%; width: 100%; }
+        .user-marker {
+            width: 50px !important;
+            height: 50px !important;
+            min-width: 50px !important;
+            min-height: 50px !important;
+            max-width: 50px !important;
+            max-height: 50px !important;
+            border-radius: 50% !important;
+            border: 3px solid #3b82f6;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
+            object-fit: cover !important;
+            object-position: center !important;
+        }
+        .user-marker:hover { transform: scale(1.1); }
+        .user-marker.online { border-color: #22c55e; }
+        .user-marker.current-user { border-color: #f59e0b; }
+        .chat-message { animation: slideIn 0.3s ease; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            50% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+        }
+        .chat-bubble { animation: popIn 0.3s ease; }
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.8) translateY(20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .unread-badge { animation: bounce 1s infinite; }
+        @keyframes bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+        .chat-window { animation: slideUp 0.3s ease; }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loader {
+            border: 3px solid #374151;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .modal-overlay { animation: fadeIn 0.2s ease; }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .tab-active { background: #3b82f6; }
+        .user-hover-card { animation: fadeIn 0.2s ease; pointer-events: none; }
+        .leaflet-marker-icon { background: transparent !important; border: none !important; }
+        .leaflet-marker-icon img {
+            width: 50px !important;
+            height: 50px !important;
+            border-radius: 50% !important;
+            object-fit: cover !important;
+        }
+        .custom-marker { background: transparent !important; border: none !important; }
+        .tinder-card {
+            animation: cardIn 0.3s ease;
+        }
+        @keyframes cardIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .swipe-left {
+            animation: swipeLeft 0.3s ease forwards;
+        }
+        @keyframes swipeLeft {
+            to { opacity: 0; transform: translateX(-100%) rotate(-20deg); }
+        }
+        .swipe-right {
+            animation: swipeRight 0.3s ease forwards;
+        }
+        @keyframes swipeRight {
+            to { opacity: 0; transform: translateX(100%) rotate(20deg); }
+        }
+        .match-animation {
+            animation: matchPop 0.5s ease;
+        }
+        @keyframes matchPop {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .heart-float {
+            animation: heartFloat 1s ease forwards;
+        }
+        @keyframes heartFloat {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-50px) scale(1.5); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <!-- Auth Modal -->
+    <div id="authModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h1 class="text-3xl font-bold text-center mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                🗺️ MapChat
+            </h1>
+            <p class="text-gray-400 text-center mb-6">Znajdź ludzi w okolicy i rozmawiaj!</p>
+            
+            <div id="authTabs" class="flex mb-6 bg-gray-700 rounded-lg p-1">
+                <button id="loginTab" onclick="switchTab('login')" class="flex-1 py-2 rounded-lg bg-blue-500 font-medium transition">Logowanie</button>
+                <button id="registerTab" onclick="switchTab('register')" class="flex-1 py-2 rounded-lg font-medium transition">Rejestracja</button>
+            </div>
+            
+            <div id="authForm">
+                <div id="registerFields" class="hidden">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-2">Twoje imię</label>
+                        <input type="text" id="registerName" placeholder="Wpisz swoje imię" class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-2">Płeć</label>
+                        <div class="flex gap-3">
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="gender" value="male" class="hidden peer">
+                                <div class="p-3 bg-gray-700 rounded-lg text-center peer-checked:bg-blue-600 peer-checked:ring-2 peer-checked:ring-blue-400 transition">
+                                    👨 Mężczyzna
+                                </div>
+                            </label>
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="gender" value="female" class="hidden peer">
+                                <div class="p-3 bg-gray-700 rounded-lg text-center peer-checked:bg-pink-600 peer-checked:ring-2 peer-checked:ring-pink-400 transition">
+                                    👩 Kobieta
+                                </div>
+                            </label>
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="gender" value="other" class="hidden peer">
+                                <div class="p-3 bg-gray-700 rounded-lg text-center peer-checked:bg-purple-600 peer-checked:ring-2 peer-checked:ring-purple-400 transition">
+                                    🌈 Inne
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-2">Zdjęcie profilowe</label>
+                        <div class="flex items-center gap-4">
+                            <div id="avatarPreview" class="w-16 h-16 rounded-full bg-gray-600 flex items-center justify-center overflow-hidden">
+                                <span class="text-2xl">👤</span>
+                            </div>
+                            <div class="flex-1">
+                                <input type="file" id="avatarInput" accept="image/*" class="hidden">
+                                <button onclick="document.getElementById('avatarInput').click()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition">
+                                    📷 Wybierz zdjęcie
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-2">Opis</label>
+                        <input type="text" id="registerStatus" placeholder="Napisz coś o sobie..." class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-2">Email</label>
+                    <input type="email" id="authEmail" placeholder="twoj@email.com" class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-2">Hasło</label>
+                    <input type="password" id="authPassword" placeholder="••••••••" class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div id="forgotPasswordLink" class="mb-4 text-right">
+                    <button onclick="showForgotPassword()" class="text-sm text-blue-400 hover:text-blue-300 hover:underline">Zapomniałem hasła</button>
+                </div>
+                
+                <div id="authError" class="hidden mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm"></div>
+                <div id="authSuccess" class="hidden mb-4 p-3 bg-green-500/20 border border-green-500 rounded-lg text-green-400 text-sm"></div>
+                
+                <button id="authButton" onclick="handleAuth()" class="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 rounded-lg font-semibold transition transform hover:scale-105 flex items-center justify-center gap-2">
+                    <span id="authButtonText">🚀 Zaloguj się</span>
+                    <div id="authLoader" class="loader hidden"></div>
+                </button>
+            </div>
+
+            <div id="forgotPasswordForm" class="hidden">
+                <p class="text-gray-400 mb-4">Podaj swój email, a wyślemy Ci link do zresetowania hasła.</p>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-2">Email</label>
+                    <input type="email" id="resetEmail" placeholder="twoj@email.com" class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div id="resetError" class="hidden mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm"></div>
+                <div id="resetSuccess" class="hidden mb-4 p-3 bg-green-500/20 border border-green-500 rounded-lg text-green-400 text-sm"></div>
+                <button onclick="sendPasswordReset()" class="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 rounded-lg font-semibold transition mb-3 flex items-center justify-center gap-2">
+                    <span id="resetButtonText">📧 Wyślij link</span>
+                    <div id="resetLoader" class="loader hidden"></div>
+                </button>
+                <button onclick="hideForgotPassword()" class="w-full py-2 text-gray-400 hover:text-white transition">← Wróć do logowania</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Banned Modal -->
+    <div id="bannedModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] hidden">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl text-center">
+            <div class="text-6xl mb-4">🚫</div>
+            <h2 class="text-2xl font-bold mb-4 text-red-400">Konto zablokowane</h2>
+            <p class="text-gray-400 mb-6">Twoje konto zostało zablokowane przez administratora.</p>
+            <button onclick="logoutBanned()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition">Rozumiem</button>
+        </div>
+    </div>
+
+    <!-- Tinder Modal -->
+    <div id="tinderModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] hidden modal-overlay">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl max-h-[90vh] overflow-hidden flex flex-col" style="overflow-x: hidden;">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2">💕 Poznaj kogoś</h2>
+                <button onclick="closeTinder()" class="p-2 hover:bg-gray-700 rounded-lg transition">✕</button>
+            </div>
+            
+            <!-- Gender Filter - only visible in Discover tab -->
+            <div id="genderFilterPanel" class="mb-4 p-3 bg-gray-700 rounded-lg">
+                <p class="text-xs text-gray-400 mb-2">Pokaż:</p>
+                <div class="flex gap-2">
+                    <button id="filterAll" onclick="setGenderFilter('all')" class="flex-1 py-2 px-3 rounded-lg bg-blue-500 text-xs font-medium transition">👥 Wszyscy</button>
+                    <button id="filterMale" onclick="setGenderFilter('male')" class="flex-1 py-2 px-3 rounded-lg bg-gray-600 text-xs font-medium transition">👨 Mężczyźni</button>
+                    <button id="filterFemale" onclick="setGenderFilter('female')" class="flex-1 py-2 px-3 rounded-lg bg-gray-600 text-xs font-medium transition">👩 Kobiety</button>
+                </div>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="flex mb-4 bg-gray-700 rounded-lg p-1">
+                <button id="tinderTabDiscover" onclick="switchTinderTab('discover')" class="flex-1 py-2 rounded-lg tab-active font-medium transition text-xs">🔍 Odkrywaj</button>
+                <button id="tinderTabLikes" onclick="switchTinderTab('likes')" class="flex-1 py-2 rounded-lg font-medium transition text-xs relative">
+                    ❤️ Polubienia
+                    <span id="likesTabCount" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-pink-500 rounded-full text-xs flex items-center justify-center">0</span>
+                </button>
+                <button id="tinderTabMatches" onclick="switchTinderTab('matches')" class="flex-1 py-2 rounded-lg font-medium transition text-xs relative">
+                    💕 Matche
+                    <span id="matchesTabCount" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full text-xs flex items-center justify-center">0</span>
+                </button>
+                <button id="tinderTabMyLikes" onclick="switchTinderTab('mylikes')" class="flex-1 py-2 rounded-lg font-medium transition text-xs relative">
+                    💖 Moje
+                </button>
+                <button id="tinderTabSkipped" onclick="switchTinderTab('skipped')" class="flex-1 py-2 rounded-lg font-medium transition text-xs relative">
+                    ⏭️ Pominięte
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto">
+                <div id="tinderCard" class="hidden relative">
+                    <!-- Card content -->
+                </div>
+                
+                <div id="tinderButtons" class="hidden justify-center gap-8 mt-6 flex-shrink-0">
+                    <button onclick="swipeLeft()" class="w-16 h-16 bg-red-500/20 hover:bg-red-500/40 rounded-full flex items-center justify-center text-3xl transition transform hover:scale-110 flex-shrink-0">
+                        ❌
+                    </button>
+                    <button onclick="swipeRight()" class="w-16 h-16 bg-green-500/20 hover:bg-green-500/40 rounded-full flex items-center justify-center text-3xl transition transform hover:scale-110 flex-shrink-0">
+                        ❤️
+                    </button>
+                </div>
+                
+                <div id="likesList" class="hidden space-y-3">
+                    <!-- Users who liked me -->
+                </div>
+                
+                <div id="matchesList" class="hidden space-y-3">
+                    <!-- Matched users -->
+                </div>
+                
+                <div id="myLikesList" class="hidden space-y-3">
+                    <!-- Users I liked -->
+                </div>
+                
+                <div id="skippedList" class="hidden space-y-3">
+                    <!-- Skipped users list -->
+                </div>
+                
+                <div id="noMoreUsers" class="hidden text-center py-12">
+                    <div class="text-6xl mb-4">🔍</div>
+                    <p class="text-gray-400">Brak więcej osób w okolicy</p>
+                    <p class="text-sm text-gray-500 mt-2">Sprawdź później!</p>
+                </div>
+                
+                <div id="noLikes" class="hidden text-center py-12">
+                    <div class="text-6xl mb-4">💔</div>
+                    <p class="text-gray-400">Nikt Cię jeszcze nie polubił</p>
+                    <p class="text-sm text-gray-500 mt-2">Bądź aktywny, a polubienia przyjdą!</p>
+                </div>
+                
+                <div id="noMatches" class="hidden text-center py-12">
+                    <div class="text-6xl mb-4">💕</div>
+                    <p class="text-gray-400">Brak matchów</p>
+                    <p class="text-sm text-gray-500 mt-2">Przeglądaj profile i dawaj serduszka!</p>
+                </div>
+                
+                <div id="noSkippedUsers" class="hidden text-center py-12">
+                    <div class="text-6xl mb-4">✨</div>
+                    <p class="text-gray-400">Nie pominąłeś nikogo</p>
+                    <p class="text-sm text-gray-500 mt-2">Wszystkim dałeś szansę!</p>
+                </div>
+                
+                <div id="noMyLikes" class="hidden text-center py-12">
+                    <div class="text-6xl mb-4">💖</div>
+                    <p class="text-gray-400">Nie polubiłeś jeszcze nikogo</p>
+                    <p class="text-sm text-gray-500 mt-2">Przeglądaj profile w zakładce Odkrywaj!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Match Modal -->
+    <div id="matchModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] hidden modal-overlay">
+        <div class="text-center match-animation">
+            <div class="text-8xl mb-4">💕</div>
+            <h2 class="text-3xl font-bold mb-2 bg-gradient-to-r from-pink-400 to-red-500 bg-clip-text text-transparent">To Match!</h2>
+            <p class="text-gray-400 mb-6">Wy oboje się polubiliście!</p>
+            <div id="matchAvatars" class="flex justify-center items-center gap-4 mb-6">
+                <!-- Avatars -->
+            </div>
+            <div class="flex gap-4 justify-center">
+                <button onclick="closeMatch()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition">Kontynuuj</button>
+                <button onclick="closeMatchAndChat()" class="px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 rounded-lg font-semibold transition">💬 Napisz!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Likes Notification -->
+    <div id="likesNotification" class="fixed top-20 right-4 bg-gradient-to-r from-pink-500 to-red-500 rounded-lg p-4 shadow-xl z-[9999] hidden modal-overlay cursor-pointer" onclick="openTinder()">
+        <div class="flex items-center gap-3">
+            <div class="text-2xl">❤️</div>
+            <div>
+                <p class="font-bold" id="likeNotifText">Ktoś Cię polubił!</p>
+                <p class="text-sm opacity-80">Kliknij, żeby sprawdzić</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="reportModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] hidden modal-overlay">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2">🚨 Zgłoś użytkownika</h2>
+                <button onclick="closeReportModal()" class="p-2 hover:bg-gray-700 rounded-lg transition">✕</button>
+            </div>
+            <div id="reportUserInfo" class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg mb-4"></div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Powód zgłoszenia</label>
+                <select id="reportReason" class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-red-500 outline-none">
+                    <option value="">Wybierz powód...</option>
+                    <option value="spam">Spam / Reklamy</option>
+                    <option value="harassment">Nękanie / Obraźliwe treści</option>
+                    <option value="inappropriate">Nieodpowiednie zachowanie</option>
+                    <option value="fake">Fałszywe konto</option>
+                    <option value="scam">Oszustwo</option>
+                    <option value="other">Inne</option>
+                </select>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Dodatkowy opis (opcjonalnie)</label>
+                <textarea id="reportDescription" rows="3" placeholder="Opisz szczegóły..." class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-red-500 outline-none resize-none"></textarea>
+            </div>
+            <div id="reportError" class="hidden mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm"></div>
+            <div class="flex gap-3">
+                <button onclick="closeReportModal()" class="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition">Anuluj</button>
+                <button onclick="submitReport()" class="flex-1 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+                    <span id="reportButtonText">🚨 Wyślij zgłoszenie</span>
+                    <div id="reportLoader" class="loader hidden"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div id="adminModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] hidden modal-overlay">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-4xl w-full mx-4 shadow-2xl max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2">👑 Panel Administratora</h2>
+                <button onclick="closeAdminPanel()" class="p-2 hover:bg-gray-700 rounded-lg transition">✕</button>
+            </div>
+            
+            <div class="flex mb-4 bg-gray-700 rounded-lg p-1">
+                <button id="adminTabUsers" onclick="switchAdminTab('users')" class="flex-1 py-2 rounded-lg tab-active font-medium transition">👥 Użytkownicy</button>
+                <button id="adminTabReports" onclick="switchAdminTab('reports')" class="flex-1 py-2 rounded-lg font-medium transition relative">
+                    🚨 Zgłoszenia
+                    <span id="reportsCount" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center">0</span>
+                </button>
+                <button id="adminTabAvatars" onclick="switchAdminTab('avatars')" class="flex-1 py-2 rounded-lg font-medium transition">🖼️ Avatary</button>
+            </div>
+            
+            <div id="adminUsersTab" class="flex-1 flex flex-col overflow-hidden">
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div class="bg-gray-700 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-blue-400" id="statTotal">0</div>
+                        <div class="text-xs text-gray-400">Użytkowników</div>
+                    </div>
+                    <div class="bg-gray-700 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-green-400" id="statOnline">0</div>
+                        <div class="text-xs text-gray-400">Online</div>
+                    </div>
+                    <div class="bg-gray-700 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-red-400" id="statBanned">0</div>
+                        <div class="text-xs text-gray-400">Zbanowanych</div>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <input type="text" id="adminSearch" placeholder="🔍 Szukaj użytkownika..." class="w-full px-4 py-2 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" oninput="filterAdminUsers()">
+                </div>
+                <div class="flex-1 overflow-y-auto space-y-2" id="adminUsersList">
+                    <div class="text-center text-gray-400 py-8">Ładowanie...</div>
+                </div>
+            </div>
+            
+            <div id="adminReportsTab" class="flex-1 flex flex-col overflow-hidden hidden">
+                <div class="flex-1 overflow-y-auto space-y-3" id="adminReportsList">
+                    <div class="text-center text-gray-400 py-8">Ładowanie...</div>
+                </div>
+            </div>
+            
+            <div id="adminAvatarsTab" class="flex-1 flex flex-col overflow-hidden hidden">
+                <p class="text-sm text-gray-400 mb-3">Kliknij na avatar, aby zobaczyć opcje moderacji.</p>
+                <div class="flex-1 overflow-y-auto">
+                    <div id="adminAvatarGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 justify-items-center">
+                        <div class="text-center text-gray-400 py-8 col-span-full">Ładowanie...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Avatar Action Modal -->
+    <div id="avatarActionModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] hidden modal-overlay">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div class="flex flex-col items-center mb-4">
+                <img id="avatarActionImg" src="" class="w-64 h-64 rounded-xl object-cover border-4 border-gray-600 mb-4 shadow-xl">
+                <h3 id="avatarActionName" class="text-lg font-bold"></h3>
+                <p id="avatarActionEmail" class="text-sm text-gray-400"></p>
+                <span id="avatarActionBadge" class="hidden mt-2 text-xs bg-red-500 px-2 py-1 rounded-full">ZBANOWANY</span>
+            </div>
+            <div class="space-y-2">
+                <button id="avatarActionReset" onclick="resetUserAvatar()" class="w-full py-3 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition">🔄 Zresetuj avatar</button>
+                <button id="avatarActionBan" onclick="banUserFromAvatar()" class="w-full py-3 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition">🚫 Zbanuj</button>
+                <button id="avatarActionUnban" onclick="unbanUserFromAvatar()" class="hidden w-full py-3 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition">✓ Odbanuj</button>
+                <button onclick="closeAvatarActionModal()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition">Anuluj</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Detail Modal -->
+    <div id="reportDetailModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] hidden modal-overlay">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2">📋 Szczegóły zgłoszenia</h2>
+                <button onclick="closeReportDetail()" class="p-2 hover:bg-gray-700 rounded-lg transition">✕</button>
+            </div>
+            <div id="reportDetailContent" class="flex-1 overflow-y-auto"></div>
+            <div id="reportDetailActions" class="mt-4 pt-4 border-t border-gray-700 flex gap-3"></div>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div id="editProfileModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] hidden modal-overlay">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2">✏️ Edytuj profil</h2>
+                <button onclick="closeEditProfile()" class="p-2 hover:bg-gray-700 rounded-lg transition">✕</button>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-3">Zdjęcia</label>
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <div id="editAvatarPreview" class="w-full aspect-square rounded-xl bg-gray-600 flex items-center justify-center overflow-hidden border-3 border-blue-500 cursor-pointer hover:opacity-80 transition" onclick="document.getElementById('editAvatarInput').click()">
+                            <span class="text-4xl">👤</span>
+                        </div>
+                        <input type="file" id="editAvatarInput" accept="image/*" class="hidden">
+                        <p class="text-xs text-center text-blue-400 mt-2">📷 Zdjęcie profilowe</p>
+                    </div>
+                    <div class="flex-1">
+                        <div id="editAvatar2Preview" class="w-full aspect-square rounded-xl bg-gray-600 flex items-center justify-center overflow-hidden border-3 border-gray-500 cursor-pointer hover:opacity-80 transition" onclick="document.getElementById('editAvatar2Input').click()">
+                            <span class="text-4xl">➕</span>
+                        </div>
+                        <input type="file" id="editAvatar2Input" accept="image/*" class="hidden">
+                        <p class="text-xs text-center text-gray-400 mt-2">Drugie zdjęcie</p>
+                        <button id="removeAvatar2Btn" onclick="event.stopPropagation(); removeSecondPhoto()" class="hidden w-full mt-1 px-2 py-1 bg-red-600/50 hover:bg-red-600 rounded-lg text-xs transition">🗑️ Usuń</button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2 text-center">Kliknij na zdjęcie, aby zmienić • Auto-kompresja do 512KB</p>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Płeć</label>
+                <div class="flex gap-3">
+                    <label class="flex-1 cursor-pointer">
+                        <input type="radio" name="editGender" value="male" class="hidden peer">
+                        <div class="p-3 bg-gray-700 rounded-lg text-center peer-checked:bg-blue-600 peer-checked:ring-2 peer-checked:ring-blue-400 transition text-sm">👨 Mężczyzna</div>
+                    </label>
+                    <label class="flex-1 cursor-pointer">
+                        <input type="radio" name="editGender" value="female" class="hidden peer">
+                        <div class="p-3 bg-gray-700 rounded-lg text-center peer-checked:bg-pink-600 peer-checked:ring-2 peer-checked:ring-pink-400 transition text-sm">👩 Kobieta</div>
+                    </label>
+                    <label class="flex-1 cursor-pointer">
+                        <input type="radio" name="editGender" value="other" class="hidden peer">
+                        <div class="p-3 bg-gray-700 rounded-lg text-center peer-checked:bg-purple-600 peer-checked:ring-2 peer-checked:ring-purple-400 transition text-sm">🌈 Inne</div>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Opis</label>
+                <input type="text" id="editStatus" placeholder="Napisz coś o sobie..." class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            
+            <div id="editProfileError" class="hidden mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm"></div>
+            
+            <div class="flex gap-3">
+                <button onclick="closeEditProfile()" class="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition">Anuluj</button>
+                <button onclick="saveProfile()" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+                    <span id="saveProfileText">💾 Zapisz</span>
+                    <div id="saveProfileLoader" class="loader hidden"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[10001] hidden modal-overlay" onclick="closeImageModal()">
+        <button onclick="closeImageModal()" class="absolute top-4 right-4 text-white text-3xl hover:text-gray-300 transition">✕</button>
+        <img id="modalImage" src="" class="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl">
+    </div>
+
+    <!-- User Hover Card -->
+    <div id="userHoverCard" class="fixed z-[2000] hidden user-hover-card">
+        <div class="bg-gray-800 rounded-xl shadow-2xl p-5 border border-gray-600 min-w-[280px]">
+            <div class="flex flex-col items-center gap-4">
+                <img id="hoverCardAvatar" src="" class="w-40 h-40 rounded-full object-cover border-4 border-green-500 shadow-xl">
+                <div class="text-center">
+                    <p id="hoverCardName" class="font-bold text-2xl"></p>
+                    <p id="hoverCardGender" class="text-sm text-gray-500 mt-1"></p>
+                    <p id="hoverCardStatus" class="text-base text-gray-400 mt-2"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="mainApp" class="hidden h-screen flex flex-col">
+        <header class="bg-gray-800 px-4 py-3 flex items-center justify-between shadow-lg z-10">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🗺️</span>
+                <h1 class="text-xl font-bold">MapChat</h1>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="openTinder()" class="p-2 hover:bg-gray-700 rounded-lg transition relative" title="Poznaj kogoś">
+                    💕
+                    <span id="likesCountBadge" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-pink-500 rounded-full text-xs flex items-center justify-center font-bold">0</span>
+                </button>
+                <button id="refreshLocationBtn" onclick="requestGeolocation()" class="p-2 hover:bg-gray-700 rounded-lg transition text-blue-400" title="Odśwież lokalizację">📍</button>
+                <button id="adminButton" onclick="openAdminPanel()" class="hidden p-2 hover:bg-gray-700 rounded-lg transition text-yellow-400 relative" title="Panel Admina">
+                    👑
+                    <span id="adminReportsBadge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs flex items-center justify-center"></span>
+                </button>
+                <div class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded-lg px-2 py-1 transition" onclick="openEditProfile()" title="Edytuj profil">
+                    <div id="headerAvatar" class="w-8 h-8 rounded-full bg-gray-600 overflow-hidden"></div>
+                    <span id="headerName" class="text-sm font-medium"></span>
+                    <span id="adminBadge" class="hidden text-xs bg-yellow-500 text-black px-2 py-0.5 rounded-full font-bold">ADMIN</span>
+                    <span class="text-gray-400 text-xs">✏️</span>
+                </div>
+                <button onclick="logout()" class="p-2 hover:bg-gray-700 rounded-lg transition" title="Wyloguj">🚪</button>
+            </div>
+        </header>
+
+        <div class="flex-1 relative">
+            <div id="map"></div>
+            
+            <div id="instructions" class="absolute top-4 left-4 bg-gray-800/90 backdrop-blur rounded-lg p-4 max-w-xs z-[1000]">
+                <p class="text-sm">📍 <strong>Ustalamy Twoją przybliżoną lokalizację...</strong></p>
+                <p class="text-xs text-gray-400 mt-1">Dla Twojej prywatności pokazujemy pozycję z dokładnością do ~300-500m</p>
+                <button onclick="closeInstructions()" class="mt-2 text-xs text-blue-400 hover:underline">Rozumiem</button>
+            </div>
+
+            <div id="onlinePanel" class="absolute top-4 right-4 bg-gray-800/90 backdrop-blur rounded-lg p-4 max-w-xs z-[1000]">
+                <h3 class="font-semibold mb-2 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full pulse"></span>
+                    Online (<span id="onlineCount">0</span>)
+                </h3>
+                <div id="onlineUsers" class="space-y-2 max-h-48 overflow-y-auto">
+                    <div class="flex items-center justify-center py-4">
+                        <div class="loader w-6 h-6"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="chatBubbles" class="fixed bottom-4 right-4 flex flex-col-reverse items-end gap-2 z-[1000]"></div>
+            <div id="chatWindows" class="fixed bottom-4 right-20 flex flex-row-reverse items-end gap-3 z-[1000]"></div>
+        </div>
+    </div>
+
+    <script>
+        // App State
+        let currentUser = null;
+        let map = null;
+        let userMarkers = {};
+        let onlineUsers = {};
+        let allUsersForAdmin = {};
+        let cachedUsers = {};
+        let allReports = [];
+        let chats = {};
+        let openChats = {};
+        let unreadMessages = {};
+        let chatListeners = {};
+        let reportingUserId = null;
+        let currentAdminTab = 'users';
+        let totalUnreadCount = 0;
+        let originalTitle = 'MapChat - Znajdź ludzi w okolicy';
+        let heartbeatInterval = null;
+        const HEARTBEAT_INTERVAL = 15000;
+        const ONLINE_TIMEOUT = 30000;
+        
+        // Tinder state
+        let tinderUsers = [];
+        let currentTinderIndex = 0;
+        let likedBy = [];
+        let myLikes = [];
+        let myLikesWithDocIds = [];
+        let myDislikes = [];
+        let myMatches = [];
+        let matchedUser = null;
+        let tinderTab = 'discover';
+        let genderFilter = 'all'; // 'all', 'male', 'female'
+        
+        let db = null;
+        let auth = null;
+
+        const notificationSound = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Onp+ck4d5bWZmbnuIk5mZlo+FesANFxIOCgkLDhQbIignIx0XEg8NDAsLCwwNDxETFRYWFhUTEQ8NCwoJCAgHBwcHBwgICQoLDA0ODw8QEBAPDg0MCwoJCAcGBgUFBQUFBQYGBwgJCgsMDQ4PDxAQEA8ODQwLCgkIBwYGBQUFBQUFBgYHCAkKCwwNDg8PEBAQEA8ODQwLCgkIBwYFBQQEBAQEBQUGBwgJCgsMDQ4PEBAQEBAPDg0MCwoJCAcGBQUEBAQEBAUFBgcICQoLDA0ODxAQEBAQDw4NDAsKCQgHBgUFBAQEBAQFBQYHCAkKCwwNDg8QEBAQDw8ODQwLCgkIBwYFBQQEBAQEBQUGBwgJCgsMDQ4PEBAQDw8ODQwLCgkIBwYGBQUEBAQEBQUGBgcICQoLDA0ODxAPDw8ODQwLCgkIBwYGBQUEBAQEBQUGBgcICQoLDA0ODw8PDw4NDAsKCQgHBgYFBQQEBAQFBQYGBwgJCgsMDQ4PDw8ODg0MCwoJCAcGBgUFBAQEBAUFBgYHCAkKCwwNDg4PDg4NDQwLCgkIBwYGBQUEBAQEBQUGBgcICQoLDA0NDg4ODQ0MCwoKCQgHBgYFBQUEBAUFBQYGBwgJCgsLDA0NDg0NDQwLCgoJCAcGBgUFBQQEBQUFBgYHCAkJCgsLDA0NDQ0NDAsLCgkJCAcGBgUFBQQEBQUFBgYHBwgJCQoLCwwMDQ0NDAwLCwoJCQgHBwYGBQUFBQUFBQYGBwcICQkKCgsLDAwMDAwMCwsKCgkJCAcHBgYFBQUFBQUFBgYGBwcICAgJCQoKCwsMDAwMCwsLCgoKCQkICAcHBwYGBgYGBgYGBgcHBwgICAkJCQoKCgsLCwsLCwsLCgoKCQkJCAgIBwcHBwYGBgYGBgYGBwcHBwgICAkJCQkKCgoKCwsLCwoKCgoJCQkJCAgICAcHBwcGBgYGBgYGBwcHBwgICAg=');
+
+        // Image compression function - max 512KB
+        function compressImage(file, maxSizeKB = 512) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        
+                        // Reduce dimensions if image is very large
+                        const maxDimension = 1024;
+                        if (width > maxDimension || height > maxDimension) {
+                            if (width > height) {
+                                height = Math.round((height * maxDimension) / width);
+                                width = maxDimension;
+                            } else {
+                                width = Math.round((width * maxDimension) / height);
+                                height = maxDimension;
+                            }
+                        }
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Start with high quality and reduce if needed
+                        let quality = 0.9;
+                        let result = canvas.toDataURL('image/jpeg', quality);
+                        
+                        // Keep reducing quality until under maxSizeKB
+                        while (result.length > maxSizeKB * 1024 * 1.37 && quality > 0.1) {
+                            quality -= 0.1;
+                            result = canvas.toDataURL('image/jpeg', quality);
+                        }
+                        
+                        resolve(result);
+                    };
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function playNotificationSound() {
+            try {
+                notificationSound.currentTime = 0;
+                notificationSound.volume = 0.3;
+                notificationSound.play().catch(() => {});
+            } catch (e) {}
+        }
+
+        function updateTitleBadge() {
+            let total = 0;
+            Object.values(unreadMessages).forEach(count => { total += count || 0; });
+            totalUnreadCount = total;
+            document.title = total > 0 ? `(${total}) ${originalTitle}` : originalTitle;
+        }
+
+        const reasonLabels = {
+            'spam': 'Spam / Reklamy',
+            'harassment': 'Nękanie / Obraźliwe treści',
+            'inappropriate': 'Nieodpowiednie zachowanie',
+            'fake': 'Fałszywe konto',
+            'scam': 'Oszustwo',
+            'other': 'Inne'
+        };
+        
+        const genderLabels = {
+            'male': '👨 Mężczyzna',
+            'female': '👩 Kobieta',
+            'other': '🌈 Inne'
+        };
+
+        function initFirebase() {
+            if (FIREBASE_CONFIG.apiKey === "TUTAJ_WPISZ_API_KEY") {
+                document.getElementById('authModal').innerHTML = `
+                    <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl text-center">
+                        <h1 class="text-3xl mb-4">⚠️</h1>
+                        <h2 class="text-xl font-bold mb-4">Brak konfiguracji Firebase</h2>
+                        <p class="text-gray-400">Właściciel strony musi wpisać konfigurację Firebase w kodzie.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            try {
+                firebase.initializeApp(FIREBASE_CONFIG);
+                auth = firebase.auth();
+                db = firebase.firestore();
+                auth.onAuthStateChanged(async (user) => {
+                    if (user) await loadUserProfile(user);
+                });
+            } catch (error) {
+                console.error('Firebase init error:', error);
+                alert('Błąd inicjalizacji Firebase: ' + error.message);
+            }
+        }
+
+        function showForgotPassword() {
+            document.getElementById('authTabs').classList.add('hidden');
+            document.getElementById('authForm').classList.add('hidden');
+            document.getElementById('forgotPasswordForm').classList.remove('hidden');
+            document.getElementById('resetEmail').value = document.getElementById('authEmail').value;
+        }
+
+        function hideForgotPassword() {
+            document.getElementById('authTabs').classList.remove('hidden');
+            document.getElementById('authForm').classList.remove('hidden');
+            document.getElementById('forgotPasswordForm').classList.add('hidden');
+        }
+
+        async function sendPasswordReset() {
+            const email = document.getElementById('resetEmail').value.trim();
+            if (!email) { document.getElementById('resetError').textContent = 'Podaj email!'; document.getElementById('resetError').classList.remove('hidden'); return; }
+            document.getElementById('resetButtonText').classList.add('hidden');
+            document.getElementById('resetLoader').classList.remove('hidden');
+            try {
+                await auth.sendPasswordResetEmail(email);
+                document.getElementById('resetSuccess').textContent = 'Link wysłany na ' + email;
+                document.getElementById('resetSuccess').classList.remove('hidden');
+                document.getElementById('resetError').classList.add('hidden');
+            } catch (error) {
+                document.getElementById('resetError').textContent = error.message;
+                document.getElementById('resetError').classList.remove('hidden');
+            }
+            document.getElementById('resetButtonText').classList.remove('hidden');
+            document.getElementById('resetLoader').classList.add('hidden');
+        }
+
+        document.getElementById('avatarInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                try {
+                    const compressed = await compressImage(file, 512);
+                    document.getElementById('avatarPreview').innerHTML = `<img src="${compressed}" class="w-full h-full object-cover">`;
+                    document.getElementById('avatarPreview').dataset.avatar = compressed;
+                } catch (error) {
+                    alert('Błąd przy przetwarzaniu zdjęcia');
+                }
+            }
+        });
+
+        let currentTab = 'login';
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('loginTab').classList.toggle('bg-blue-500', tab === 'login');
+            document.getElementById('registerTab').classList.toggle('bg-blue-500', tab === 'register');
+            document.getElementById('registerFields').classList.toggle('hidden', tab === 'login');
+            document.getElementById('forgotPasswordLink').classList.toggle('hidden', tab !== 'login');
+            document.getElementById('authButtonText').textContent = tab === 'login' ? '🚀 Zaloguj się' : '📝 Zarejestruj się';
+        }
+
+        function showError(msg) {
+            document.getElementById('authError').textContent = msg;
+            document.getElementById('authError').classList.remove('hidden');
+        }
+
+        function setLoading(loading) {
+            document.getElementById('authButton').disabled = loading;
+            document.getElementById('authButtonText').classList.toggle('hidden', loading);
+            document.getElementById('authLoader').classList.toggle('hidden', !loading);
+        }
+
+        async function handleAuth() {
+            document.getElementById('authError').classList.add('hidden');
+            const email = document.getElementById('authEmail').value.trim();
+            const password = document.getElementById('authPassword').value;
+            if (!email || !password) { showError('Podaj email i hasło!'); return; }
+            setLoading(true);
+            try {
+                if (currentTab === 'login') {
+                    await auth.signInWithEmailAndPassword(email, password);
+                } else {
+                    const name = document.getElementById('registerName').value.trim();
+                    const genderEl = document.querySelector('input[name="gender"]:checked');
+                    if (!name) { showError('Podaj swoje imię!'); setLoading(false); return; }
+                    if (!genderEl) { showError('Wybierz płeć!'); setLoading(false); return; }
+                    
+                    const avatarPreview = document.getElementById('avatarPreview');
+                    const avatar = avatarPreview.dataset.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`;
+                    const status = document.getElementById('registerStatus').value || 'Szukam znajomych 👋';
+                    const gender = genderEl.value;
+
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    await db.collection('users').doc(userCredential.user.uid).set({
+                        name, email, avatar, status, gender,
+                        lat: null, lng: null, online: true,
+                        isAdmin: false, isBanned: false,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            } catch (error) {
+                let message = 'Wystąpił błąd';
+                switch (error.code) {
+                    case 'auth/email-already-in-use': message = 'Ten email jest już zarejestrowany'; break;
+                    case 'auth/weak-password': message = 'Hasło musi mieć min. 6 znaków'; break;
+                    case 'auth/invalid-email': message = 'Nieprawidłowy email'; break;
+                    case 'auth/user-not-found':
+                    case 'auth/wrong-password': message = 'Nieprawidłowy email lub hasło'; break;
+                    default: message = error.message;
+                }
+                showError(message);
+            }
+            setLoading(false);
+        }
+
+        async function loadUserProfile(user) {
+            try {
+                const doc = await db.collection('users').doc(user.uid).get();
+                if (doc.exists) {
+                    currentUser = { id: user.uid, ...doc.data() };
+                    if (currentUser.isBanned) { document.getElementById('bannedModal').classList.remove('hidden'); return; }
+
+                    await db.collection('users').doc(user.uid).update({
+                        online: true,
+                        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    document.getElementById('authModal').classList.add('hidden');
+                    document.getElementById('mainApp').classList.remove('hidden');
+                    document.getElementById('headerAvatar').innerHTML = `<img src="${currentUser.avatar}" class="w-full h-full object-cover">`;
+                    document.getElementById('headerName').textContent = currentUser.name;
+
+                    if (currentUser.isAdmin) {
+                        document.getElementById('adminButton').classList.remove('hidden');
+                        document.getElementById('adminBadge').classList.remove('hidden');
+                        listenForReports();
+                    }
+
+                    initMap();
+                    listenForUsers();
+                    listenForBan(user.uid);
+                    listenForAllChats();
+                    listenForLikes();
+                    startHeartbeat(user.uid);
+                    requestGeolocation();
+
+                    window.addEventListener('beforeunload', () => {
+                        if (currentUser) {
+                            db.collection('users').doc(user.uid).update({
+                                online: false,
+                                lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Load profile error:', error);
+            }
+        }
+
+        function startHeartbeat(userId) {
+            updateHeartbeat(userId);
+            heartbeatInterval = setInterval(() => updateHeartbeat(userId), HEARTBEAT_INTERVAL);
+        }
+
+        function updateHeartbeat(userId) {
+            if (!db || !userId) return;
+            db.collection('users').doc(userId).update({
+                lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+                online: true
+            }).catch(() => {});
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+        }
+
+        function addRandomOffset(lat, lng) {
+            const offsetLat = (Math.random() - 0.5) * 0.008;
+            const offsetLng = (Math.random() - 0.5) * 0.008;
+            return { lat: lat + offsetLat, lng: lng + offsetLng };
+        }
+
+        function requestGeolocation() {
+            if (!navigator.geolocation) return;
+            const refreshBtn = document.getElementById('refreshLocationBtn');
+            if (refreshBtn) { refreshBtn.innerHTML = '<div class="loader w-4 h-4"></div>'; refreshBtn.disabled = true; }
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { lat, lng } = addRandomOffset(position.coords.latitude, position.coords.longitude);
+                    await setUserLocation(lat, lng);
+                    if (map) map.setView([lat, lng], 14);
+                    if (refreshBtn) { refreshBtn.innerHTML = '📍'; refreshBtn.disabled = false; }
+                },
+                () => { if (refreshBtn) { refreshBtn.innerHTML = '📍'; refreshBtn.disabled = false; } },
+                { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+            );
+        }
+
+        function listenForAllChats() {
+            db.collectionGroup('messages').where('to', '==', currentUser.id).onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(async change => {
+                    if (change.type === 'added') {
+                        const msg = change.doc.data();
+                        const fromUserId = msg.from;
+                        if (!chatListeners[getChatId(currentUser.id, fromUserId)] && fromUserId !== currentUser.id) {
+                            if (!cachedUsers[fromUserId]) {
+                                try {
+                                    const userDoc = await db.collection('users').doc(fromUserId).get();
+                                    if (userDoc.exists) cachedUsers[fromUserId] = { id: fromUserId, ...userDoc.data() };
+                                } catch (e) {}
+                            }
+                            listenForMessages(fromUserId);
+                        }
+                    }
+                });
+            });
+        }
+
+        function listenForBan(userId) {
+            db.collection('users').doc(userId).onSnapshot(doc => {
+                if (doc.exists && doc.data().isBanned) {
+                    document.getElementById('bannedModal').classList.remove('hidden');
+                    document.getElementById('mainApp').classList.add('hidden');
+                }
+            });
+        }
+
+        // Tinder Functions
+        let previousMatchCount = 0;
+        
+        function isTinderModalOpen() {
+            const modal = document.getElementById('tinderModal');
+            return modal && !modal.classList.contains('hidden');
+        }
+        
+        function listenForLikes() {
+            // Listen for likes I received
+            db.collection('likes').where('to', '==', currentUser.id).onSnapshot(snapshot => {
+                const oldLikedByCount = likedBy.length;
+                likedBy = [];
+                snapshot.forEach(doc => likedBy.push({ id: doc.id, ...doc.data() }));
+                
+                // Recalculate matches
+                const oldMatchCount = myMatches.length;
+                myMatches = myLikes.filter(likedId => likedBy.some(l => l.from === likedId));
+                
+                // Check if someone new liked us and it's a new match
+                if (myMatches.length > oldMatchCount && oldMatchCount > 0) {
+                    // New match detected from the other side!
+                    const newMatchId = myMatches.find(id => !previousMatchCount || myMatches.indexOf(id) >= previousMatchCount);
+                    if (newMatchId && cachedUsers[newMatchId]) {
+                        matchedUser = cachedUsers[newMatchId];
+                        // Show match only if Tinder modal is open
+                        if (isTinderModalOpen()) {
+                            showMatch(cachedUsers[newMatchId]);
+                        }
+                    }
+                }
+                previousMatchCount = myMatches.length;
+                
+                updateLikesBadge();
+                
+                // Update UI if tinder modal is open
+                if (tinderTab === 'likes') showLikesList();
+                if (tinderTab === 'matches') showMatchesList();
+            });
+            
+            // Listen for my likes
+            db.collection('likes').where('from', '==', currentUser.id).onSnapshot(snapshot => {
+                const myLikesWithDocs = [];
+                snapshot.forEach(doc => myLikesWithDocs.push({ odczytDocId: doc.id, odczytUserId: doc.data().to }));
+                
+                // Remove duplicates - keep only unique user IDs
+                const uniqueUserIds = [...new Set(myLikesWithDocs.map(l => l.odczytUserId))];
+                myLikes = uniqueUserIds;
+                myLikesWithDocIds = myLikesWithDocs;
+                
+                // Recalculate matches - remove duplicates
+                myMatches = [...new Set(myLikes.filter(likedId => likedBy.some(l => l.from === likedId)))];
+                previousMatchCount = myMatches.length;
+                
+                updateLikesBadge();
+                
+                // Update UI if tinder modal is open
+                if (tinderTab === 'likes') showLikesList();
+                if (tinderTab === 'matches') showMatchesList();
+                if (tinderTab === 'mylikes') showMyLikesList();
+            });
+            
+            // Listen for my dislikes
+            db.collection('dislikes').where('from', '==', currentUser.id).onSnapshot(snapshot => {
+                myDislikes = [];
+                snapshot.forEach(doc => myDislikes.push({ odczytDocId: doc.id, odczytUserId: doc.data().to }));
+                updateSkippedBadge();
+                
+                // Update UI if tinder modal is open
+                if (tinderTab === 'skipped') showSkippedUsers();
+            });
+        }
+        
+        function updateSkippedBadge() {
+            const badge = document.getElementById('skippedCount');
+            if (myDislikes.length > 0) {
+                badge.textContent = myDislikes.length;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+        
+        function switchTinderTab(tab) {
+            tinderTab = tab;
+            document.getElementById('tinderTabDiscover').classList.toggle('tab-active', tab === 'discover');
+            document.getElementById('tinderTabLikes').classList.toggle('tab-active', tab === 'likes');
+            document.getElementById('tinderTabMatches').classList.toggle('tab-active', tab === 'matches');
+            document.getElementById('tinderTabMyLikes').classList.toggle('tab-active', tab === 'mylikes');
+            document.getElementById('tinderTabSkipped').classList.toggle('tab-active', tab === 'skipped');
+            
+            // Show/hide gender filter - only in Discover tab
+            document.getElementById('genderFilterPanel').classList.toggle('hidden', tab !== 'discover');
+            
+            // Hide ALL content elements first (including buttons!)
+            document.getElementById('tinderCard').classList.add('hidden');
+            document.getElementById('tinderButtons').classList.add('hidden');
+            document.getElementById('tinderButtons').classList.remove('flex');
+            document.getElementById('likesList').classList.add('hidden');
+            document.getElementById('matchesList').classList.add('hidden');
+            document.getElementById('myLikesList').classList.add('hidden');
+            document.getElementById('skippedList').classList.add('hidden');
+            document.getElementById('noMoreUsers').classList.add('hidden');
+            document.getElementById('noLikes').classList.add('hidden');
+            document.getElementById('noMatches').classList.add('hidden');
+            document.getElementById('noMyLikes').classList.add('hidden');
+            document.getElementById('noSkippedUsers').classList.add('hidden');
+            
+            if (tab === 'discover') {
+                // Pokaż kartę i przyciski tylko gdy są użytkownicy
+                document.getElementById('tinderCard').classList.remove('hidden');
+                if (tinderUsers.length > 0 && currentTinderIndex < tinderUsers.length) {
+                    document.getElementById('tinderButtons').classList.remove('hidden');
+                    document.getElementById('tinderButtons').classList.add('flex');
+                }
+                showCurrentTinderCard();
+            } else if (tab === 'likes') {
+                document.getElementById('likesList').classList.remove('hidden');
+                document.getElementById('likesList').innerHTML = '<div class="flex flex-col items-center justify-center py-8"><div class="loader w-8 h-8 mb-3"></div><p class="text-gray-400 text-sm">Ładowanie...</p></div>';
+                showLikesList();
+            } else if (tab === 'matches') {
+                document.getElementById('matchesList').classList.remove('hidden');
+                document.getElementById('matchesList').innerHTML = '<div class="flex flex-col items-center justify-center py-8"><div class="loader w-8 h-8 mb-3"></div><p class="text-gray-400 text-sm">Ładowanie...</p></div>';
+                showMatchesList();
+            } else if (tab === 'mylikes') {
+                document.getElementById('myLikesList').classList.remove('hidden');
+                document.getElementById('myLikesList').innerHTML = '<div class="flex flex-col items-center justify-center py-8"><div class="loader w-8 h-8 mb-3"></div><p class="text-gray-400 text-sm">Ładowanie...</p></div>';
+                showMyLikesList();
+            } else if (tab === 'skipped') {
+                document.getElementById('skippedList').classList.remove('hidden');
+                document.getElementById('skippedList').innerHTML = '<div class="flex flex-col items-center justify-center py-8"><div class="loader w-8 h-8 mb-3"></div><p class="text-gray-400 text-sm">Ładowanie...</p></div>';
+                showSkippedUsers();
+            }
+        }
+        
+        async function showLikesList() {
+            const container = document.getElementById('likesList');
+            const noLikes = document.getElementById('noLikes');
+            
+            // Filter: people who liked me but I haven't liked them back
+            const unmatchedLikes = likedBy.filter(like => !myLikes.includes(like.from));
+            
+            if (unmatchedLikes.length === 0) {
+                container.classList.add('hidden');
+                noLikes.classList.remove('hidden');
+                return;
+            }
+            
+            container.classList.remove('hidden');
+            noLikes.classList.add('hidden');
+            
+            let html = '<p class="text-sm text-gray-400 mb-3">Te osoby Cię polubiły! Kliknij na profil, aby zobaczyć więcej:</p>';
+            for (const like of unmatchedLikes) {
+                let user = cachedUsers[like.from];
+                if (!user) {
+                    try {
+                        const userDoc = await db.collection('users').doc(like.from).get();
+                        if (userDoc.exists) {
+                            user = { id: userDoc.id, ...userDoc.data() };
+                            cachedUsers[like.from] = user;
+                        }
+                    } catch (e) { continue; }
+                }
+                if (!user) continue;
+                
+                html += `
+                    <div class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition cursor-pointer" onclick="showProfileInList('${user.id}', 'likes')">
+                        <img src="${user.avatar}" class="w-14 h-14 rounded-full object-cover border-2 border-pink-500">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">${user.name}</p>
+                            <p class="text-sm text-gray-400">${genderLabels[user.gender] || ''}</p>
+                            <p class="text-xs text-pink-400">❤️ Polubił/a Cię!</p>
+                        </div>
+                        <button onclick="event.stopPropagation(); likeBack('${user.id}', this)" class="px-3 py-2 bg-pink-500/20 hover:bg-pink-500/40 rounded-lg transition text-sm">
+                            ❤️ Polub
+                        </button>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+        
+        async function likeBack(odczytUserId, buttonElement) {
+            // Disable button immediately to prevent multiple clicks
+            if (buttonElement) {
+                buttonElement.disabled = true;
+                buttonElement.innerHTML = '⏳...';
+                buttonElement.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            
+            try {
+                await db.collection('likes').add({
+                    from: currentUser.id,
+                    to: odczytUserId,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                myLikes.push(odczytUserId);
+                
+                // It's definitely a match since they already liked us - show only if Tinder is open
+                if (isTinderModalOpen()) {
+                    const user = cachedUsers[odczytUserId];
+                    if (user) {
+                        matchedUser = user;
+                        showMatch(user);
+                    }
+                }
+                
+                // Refresh likes list
+                showLikesList();
+            } catch (error) {
+                console.error('Like back error:', error);
+                // Re-enable button on error
+                if (buttonElement) {
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = '❤️ Polub';
+                    buttonElement.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+        
+        async function showMatchesList() {
+            const container = document.getElementById('matchesList');
+            const noMatches = document.getElementById('noMatches');
+            
+            // Remove duplicates from myMatches
+            const uniqueMatches = [...new Set(myMatches)];
+            
+            if (uniqueMatches.length === 0) {
+                container.classList.add('hidden');
+                noMatches.classList.remove('hidden');
+                return;
+            }
+            
+            container.classList.remove('hidden');
+            noMatches.classList.add('hidden');
+            
+            let html = '<p class="text-sm text-gray-400 mb-3">Wzajemne polubienia - kliknij, aby zobaczyć profil:</p>';
+            const renderedUsers = new Set();
+            
+            for (const odczytUserId of uniqueMatches) {
+                // Skip if already rendered
+                if (renderedUsers.has(odczytUserId)) continue;
+                renderedUsers.add(odczytUserId);
+                
+                let user = cachedUsers[odczytUserId];
+                if (!user) {
+                    try {
+                        const userDoc = await db.collection('users').doc(odczytUserId).get();
+                        if (userDoc.exists) {
+                            user = { id: userDoc.id, ...userDoc.data() };
+                            cachedUsers[odczytUserId] = user;
+                        }
+                    } catch (e) { continue; }
+                }
+                if (!user) continue;
+                
+                const isOnline = onlineUsers[odczytUserId] ? true : false;
+                
+                html += `
+                    <div class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition cursor-pointer" onclick="showProfileInList('${user.id}', 'matches')">
+                        <div class="relative">
+                            <img src="${user.avatar}" class="w-14 h-14 rounded-full object-cover border-2 border-green-500">
+                            <span class="absolute bottom-0 right-0 w-4 h-4 ${isOnline ? 'bg-green-500' : 'bg-gray-500'} rounded-full border-2 border-gray-700"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">${user.name}</p>
+                            <p class="text-sm text-gray-400">${genderLabels[user.gender] || ''}</p>
+                            <p class="text-xs text-green-400">💕 Match!</p>
+                        </div>
+                        <button onclick="event.stopPropagation(); openChatFromMatch('${user.id}')" class="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/40 rounded-lg transition text-sm">
+                            💬 Czat
+                        </button>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+        
+        function openChatFromMatch(odczytUserId) {
+            const user = cachedUsers[odczytUserId];
+            if (user) {
+                closeTinder();
+                openChatWindow(user);
+            }
+        }
+        
+        async function showMyLikesList() {
+            const container = document.getElementById('myLikesList');
+            const noMyLikes = document.getElementById('noMyLikes');
+            
+            // Get unique users I liked (excluding matches - show only one-sided likes)
+            const myOneSidedLikes = myLikes.filter(userId => !myMatches.includes(userId));
+            
+            if (myOneSidedLikes.length === 0 && myMatches.length === 0) {
+                container.classList.add('hidden');
+                noMyLikes.classList.remove('hidden');
+                return;
+            }
+            
+            container.classList.remove('hidden');
+            noMyLikes.classList.add('hidden');
+            
+            let html = '<p class="text-sm text-gray-400 mb-3">Kliknij na profil, aby zobaczyć więcej:</p>';
+            
+            // First show matches
+            for (const odczytUserId of myMatches) {
+                let user = cachedUsers[odczytUserId];
+                if (!user) {
+                    try {
+                        const userDoc = await db.collection('users').doc(odczytUserId).get();
+                        if (userDoc.exists) {
+                            user = { id: userDoc.id, ...userDoc.data() };
+                            cachedUsers[odczytUserId] = user;
+                        }
+                    } catch (e) { continue; }
+                }
+                if (!user) continue;
+                
+                html += `
+                    <div class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg border border-green-500/30 hover:bg-gray-600 transition cursor-pointer" onclick="showProfileInList('${odczytUserId}', 'mylikes')">
+                        <img src="${user.avatar}" class="w-14 h-14 rounded-full object-cover border-2 border-green-500">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">${user.name}</p>
+                            <p class="text-sm text-gray-400">${genderLabels[user.gender] || ''}</p>
+                            <p class="text-xs text-green-400">💕 Match!</p>
+                        </div>
+                        <button onclick="event.stopPropagation(); unlikeUser('${odczytUserId}', this)" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition text-sm">
+                            💔 Cofnij
+                        </button>
+                    </div>
+                `;
+            }
+            
+            // Then show one-sided likes
+            for (const odczytUserId of myOneSidedLikes) {
+                let user = cachedUsers[odczytUserId];
+                if (!user) {
+                    try {
+                        const userDoc = await db.collection('users').doc(odczytUserId).get();
+                        if (userDoc.exists) {
+                            user = { id: userDoc.id, ...userDoc.data() };
+                            cachedUsers[odczytUserId] = user;
+                        }
+                    } catch (e) { continue; }
+                }
+                if (!user) continue;
+                
+                html += `
+                    <div class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition cursor-pointer" onclick="showProfileInList('${odczytUserId}', 'mylikes')">
+                        <img src="${user.avatar}" class="w-14 h-14 rounded-full object-cover border-2 border-pink-500">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">${user.name}</p>
+                            <p class="text-sm text-gray-400">${genderLabels[user.gender] || ''}</p>
+                            <p class="text-xs text-pink-400">❤️ Polubione przez Ciebie</p>
+                        </div>
+                        <button onclick="event.stopPropagation(); unlikeUser('${odczytUserId}', this)" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition text-sm">
+                            💔 Cofnij
+                        </button>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+        
+        async function unlikeUser(odczytUserId, buttonElement) {
+            if (buttonElement) {
+                buttonElement.disabled = true;
+                buttonElement.innerHTML = '⏳...';
+                buttonElement.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            
+            try {
+                // Find all like documents for this user and delete them
+                const likeDocs = myLikesWithDocIds.filter(l => l.odczytUserId === odczytUserId);
+                for (const likeDoc of likeDocs) {
+                    await db.collection('likes').doc(likeDoc.odczytDocId).delete();
+                }
+                
+                // Refresh the list
+                showMyLikesList();
+            } catch (error) {
+                console.error('Unlike error:', error);
+                if (buttonElement) {
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = '💔 Cofnij';
+                    buttonElement.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+        
+        async function showSkippedUsers() {
+            const container = document.getElementById('skippedList');
+            const noSkipped = document.getElementById('noSkippedUsers');
+            
+            if (myDislikes.length === 0) {
+                container.classList.add('hidden');
+                noSkipped.classList.remove('hidden');
+                return;
+            }
+            
+            container.classList.remove('hidden');
+            noSkipped.classList.add('hidden');
+            
+            let html = '<p class="text-sm text-gray-400 mb-3">Kliknij na profil, aby zobaczyć więcej:</p>';
+            for (const dislike of myDislikes) {
+                let user = cachedUsers[dislike.odczytUserId];
+                if (!user) {
+                    try {
+                        const userDoc = await db.collection('users').doc(dislike.odczytUserId).get();
+                        if (userDoc.exists) {
+                            user = { id: userDoc.id, ...userDoc.data() };
+                            cachedUsers[dislike.odczytUserId] = user;
+                        }
+                    } catch (e) { continue; }
+                }
+                if (!user) continue;
+                
+                html += `
+                    <div class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition cursor-pointer" onclick="showProfileInList('${user.id}', 'skipped')">
+                        <img src="${user.avatar}" class="w-14 h-14 rounded-full object-cover border-2 border-gray-500">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">${user.name}</p>
+                            <p class="text-sm text-gray-400">${genderLabels[user.gender] || ''}</p>
+                        </div>
+                        <button onclick="event.stopPropagation(); undoDislike('${dislike.odczytDocId}', '${dislike.odczytUserId}', this)" class="px-3 py-2 bg-green-500/20 hover:bg-green-500/40 rounded-lg transition text-sm">
+                            ❤️ Daj szansę
+                        </button>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+        
+        async function undoDislike(docId, odczytUserId, buttonElement) {
+            // Disable button immediately to prevent multiple clicks
+            if (buttonElement) {
+                buttonElement.disabled = true;
+                buttonElement.innerHTML = '⏳ Ładowanie...';
+                buttonElement.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            
+            try {
+                // Remove dislike
+                await db.collection('dislikes').doc(docId).delete();
+                // Add like
+                await db.collection('likes').add({
+                    from: currentUser.id,
+                    to: odczytUserId,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                // Check if it's a match - show only if Tinder modal is open
+                const theyLikedMe = likedBy.some(l => l.from === odczytUserId);
+                if (theyLikedMe && isTinderModalOpen()) {
+                    const user = cachedUsers[odczytUserId];
+                    if (user) {
+                        matchedUser = user;
+                        showMatch(user);
+                    }
+                }
+                
+                // Refresh the skipped list
+                showSkippedUsers();
+            } catch (error) {
+                console.error('Undo dislike error:', error);
+                // Re-enable button on error
+                if (buttonElement) {
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = '❤️ Daj szansę';
+                    buttonElement.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
+        let lastUnmatchedCount = 0;
+        let lastNotificationTime = 0;
+        
+        function updateLikesBadge() {
+            const badge = document.getElementById('likesCountBadge');
+            const likesTabBadge = document.getElementById('likesTabCount');
+            const matchesTabBadge = document.getElementById('matchesTabCount');
+            
+            const unmatched = likedBy.filter(like => !myLikes.includes(like.from)).length;
+            
+            // Header badge
+            if (unmatched > 0) {
+                badge.textContent = unmatched;
+                badge.classList.remove('hidden');
+                
+                // Show notification only for NEW likes (not on page load)
+                const now = Date.now();
+                if (unmatched > lastUnmatchedCount && lastUnmatchedCount > 0 && (now - lastNotificationTime) > 3000) {
+                    document.getElementById('likeNotifText').textContent = unmatched === 1 ? 'Ktoś Cię polubił!' : `${unmatched} osób Cię polubiło!`;
+                    document.getElementById('likesNotification').classList.remove('hidden');
+                    playNotificationSound();
+                    lastNotificationTime = now;
+                    setTimeout(() => document.getElementById('likesNotification').classList.add('hidden'), 5000);
+                }
+            } else {
+                badge.classList.add('hidden');
+            }
+            lastUnmatchedCount = unmatched;
+            
+            // Likes tab badge
+            if (unmatched > 0) {
+                likesTabBadge.textContent = unmatched;
+                likesTabBadge.classList.remove('hidden');
+            } else {
+                likesTabBadge.classList.add('hidden');
+            }
+            
+            // Matches tab badge
+            if (myMatches.length > 0) {
+                matchesTabBadge.textContent = myMatches.length;
+                matchesTabBadge.classList.remove('hidden');
+            } else {
+                matchesTabBadge.classList.add('hidden');
+            }
+        }
+
+        async function openTinder() {
+            document.getElementById('likesNotification').classList.add('hidden');
+            document.getElementById('tinderModal').classList.remove('hidden');
+            updateGenderFilterButtons();
+            
+            // Reset do zakładki Discover i pokaż loader
+            tinderTab = 'discover';
+            document.getElementById('tinderTabDiscover').classList.add('tab-active');
+            document.getElementById('tinderTabLikes').classList.remove('tab-active');
+            document.getElementById('tinderTabMatches').classList.remove('tab-active');
+            document.getElementById('tinderTabMyLikes').classList.remove('tab-active');
+            document.getElementById('tinderTabSkipped').classList.remove('tab-active');
+            
+            // Ukryj wszystko i pokaż loader
+            document.getElementById('tinderCard').classList.remove('hidden');
+            document.getElementById('tinderCard').innerHTML = '<div class="flex flex-col items-center justify-center py-12"><div class="loader w-12 h-12 mb-4"></div><p class="text-gray-400">Ładowanie profili...</p></div>';
+            document.getElementById('tinderButtons').classList.add('hidden');
+            document.getElementById('tinderButtons').classList.remove('flex');
+            document.getElementById('genderFilterPanel').classList.remove('hidden');
+            
+            await loadTinderUsers();
+            
+            // Pokaż kartę tylko jeśli nadal jesteśmy w zakładce discover
+            if (tinderTab === 'discover') {
+                showCurrentTinderCard();
+            }
+        }
+
+        function closeTinder() {
+            document.getElementById('tinderModal').classList.add('hidden');
+        }
+
+        function setGenderFilter(filter) {
+            genderFilter = filter;
+            updateGenderFilterButtons();
+            loadTinderUsers().then(() => showCurrentTinderCard());
+        }
+        
+        function updateGenderFilterButtons() {
+            document.getElementById('filterAll').classList.toggle('bg-blue-500', genderFilter === 'all');
+            document.getElementById('filterAll').classList.toggle('bg-gray-600', genderFilter !== 'all');
+            document.getElementById('filterMale').classList.toggle('bg-blue-500', genderFilter === 'male');
+            document.getElementById('filterMale').classList.toggle('bg-gray-600', genderFilter !== 'male');
+            document.getElementById('filterFemale').classList.toggle('bg-pink-500', genderFilter === 'female');
+            document.getElementById('filterFemale').classList.toggle('bg-gray-600', genderFilter !== 'female');
+        }
+
+        async function loadTinderUsers() {
+            try {
+                const snapshot = await db.collection('users').where('isBanned', '==', false).get();
+                tinderUsers = [];
+                const dislikedIds = myDislikes.map(d => d.odczytUserId);
+                snapshot.forEach(doc => {
+                    const user = { id: doc.id, ...doc.data() };
+                    // Don't show: myself, already liked, already disliked
+                    if (user.id !== currentUser.id && !myLikes.includes(user.id) && !dislikedIds.includes(user.id)) {
+                        // Apply gender filter
+                        if (genderFilter === 'all' || user.gender === genderFilter) {
+                            tinderUsers.push(user);
+                            cachedUsers[user.id] = user;
+                        }
+                    }
+                });
+                
+                // Calculate distance for each user
+                tinderUsers.forEach(user => {
+                    user._distance = calculateDistanceNum(user);
+                });
+                
+                // Sort by: 1. Users who liked me first, 2. By distance (closest first)
+                const likedByIds = likedBy.map(l => l.from);
+                tinderUsers.sort((a, b) => {
+                    const aLikedMe = likedByIds.includes(a.id) ? 1 : 0;
+                    const bLikedMe = likedByIds.includes(b.id) ? 1 : 0;
+                    
+                    // First priority: users who liked me
+                    if (aLikedMe !== bLikedMe) return bLikedMe - aLikedMe;
+                    
+                    // Second priority: by distance (closest first)
+                    const aDist = a._distance !== null ? a._distance : 999999;
+                    const bDist = b._distance !== null ? b._distance : 999999;
+                    return aDist - bDist;
+                });
+                
+                currentTinderIndex = 0;
+            } catch (error) {
+                console.error('Load tinder users error:', error);
+            }
+        }
+        
+        function calculateDistanceNum(user) {
+            if (!currentUser.lat || !currentUser.lng || !user.lat || !user.lng) return null;
+            const R = 6371;
+            const dLat = (user.lat - currentUser.lat) * Math.PI / 180;
+            const dLon = (user.lng - currentUser.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(currentUser.lat * Math.PI / 180) * Math.cos(user.lat * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function showCurrentTinderCard() {
+            // Sprawdź czy nadal jesteśmy w zakładce discover
+            if (tinderTab !== 'discover') return;
+            
+            const container = document.getElementById('tinderCard');
+            const buttons = document.getElementById('tinderButtons');
+            const noMore = document.getElementById('noMoreUsers');
+            
+            if (currentTinderIndex >= tinderUsers.length) {
+                container.innerHTML = '';
+                container.classList.add('hidden');
+                buttons.classList.add('hidden');
+                buttons.classList.remove('flex');
+                noMore.classList.remove('hidden');
+                return;
+            }
+            
+            // Pokaż przyciski tylko teraz gdy mamy dane
+            container.classList.remove('hidden');
+            buttons.classList.remove('hidden');
+            buttons.classList.add('flex');
+            noMore.classList.add('hidden');
+            
+            const user = tinderUsers[currentTinderIndex];
+            const likedMe = likedBy.some(l => l.from === user.id);
+            const isOnline = onlineUsers[user.id] ? true : false;
+            const distance = calculateDistance(user);
+            
+            container.innerHTML = `
+                <div class="tinder-card bg-gray-700 rounded-2xl overflow-hidden cursor-pointer" onclick="showFullProfile('${user.id}')">
+                    <div class="relative">
+                        <img src="${user.avatar}" class="w-full h-80 object-cover">
+                        ${likedMe ? '<div class="absolute top-4 right-4 bg-pink-500 px-3 py-1 rounded-full text-sm font-bold">❤️ Lubi Cię!</div>' : ''}
+                        <div class="absolute top-4 left-4 ${isOnline ? 'bg-green-500' : 'bg-gray-500'} px-3 py-1 rounded-full text-sm font-bold">
+                            ${isOnline ? '🟢 Online' : '⚫ Offline'}
+                        </div>
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+                            <h3 class="text-2xl font-bold">${user.name}</h3>
+                            <p class="text-gray-300">${genderLabels[user.gender] || ''}</p>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <p class="text-gray-300">${user.status || 'Brak opisu'}</p>
+                        ${distance ? `<p class="text-sm text-blue-400 mt-2">📍 ~${distance} km od Ciebie</p>` : ''}
+                        <p class="text-xs text-gray-500 mt-2">Kliknij, aby zobaczyć pełny profil</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function calculateDistance(user) {
+            if (!currentUser.lat || !currentUser.lng || !user.lat || !user.lng) return null;
+            const R = 6371;
+            const dLat = (user.lat - currentUser.lat) * Math.PI / 180;
+            const dLon = (user.lng - currentUser.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(currentUser.lat * Math.PI / 180) * Math.cos(user.lat * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return (R * c).toFixed(1);
+        }
+        
+        let currentPhotoIndex = 0;
+        
+        function showFullProfile(odczytUserId) {
+            const user = tinderUsers.find(u => u.id === odczytUserId) || cachedUsers[odczytUserId];
+            if (!user) return;
+            
+            currentPhotoIndex = 0;
+            const likedMe = likedBy.some(l => l.from === user.id);
+            const isOnline = onlineUsers[user.id] ? true : false;
+            const distance = calculateDistance(user);
+            const hasSecondPhoto = user.avatar2 ? true : false;
+            
+            const container = document.getElementById('tinderCard');
+            container.innerHTML = `
+                <div class="tinder-card bg-gray-700 rounded-2xl overflow-hidden">
+                    <div class="relative flex-shrink-0">
+                        <div id="photoContainer" class="relative">
+                            <img id="profileMainPhoto" src="${user.avatar}" class="w-full h-80 object-cover">
+                            ${hasSecondPhoto ? `
+                            <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+                                <button onclick="event.stopPropagation(); switchProfilePhoto('${user.id}', 0)" id="photoDot0" class="w-3 h-3 rounded-full bg-white transition"></button>
+                                <button onclick="event.stopPropagation(); switchProfilePhoto('${user.id}', 1)" id="photoDot1" class="w-3 h-3 rounded-full bg-white/50 transition"></button>
+                            </div>
+                            <button onclick="event.stopPropagation(); prevProfilePhoto('${user.id}')" class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition">◀</button>
+                            <button onclick="event.stopPropagation(); nextProfilePhoto('${user.id}')" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition">▶</button>
+                            ` : ''}
+                        </div>
+                        ${likedMe ? '<div class="absolute top-4 right-4 bg-pink-500 px-3 py-1 rounded-full text-sm font-bold">❤️ Lubi Cię!</div>' : ''}
+                        <div class="absolute top-4 left-4 ${isOnline ? 'bg-green-500' : 'bg-gray-500'} px-3 py-1 rounded-full text-sm font-bold">
+                            ${isOnline ? '🟢 Online' : '⚫ Offline'}
+                        </div>
+                        <button onclick="event.stopPropagation(); showCurrentTinderCard()" class="absolute top-4 ${likedMe ? 'top-14 right-4' : 'right-4'} bg-gray-800/80 hover:bg-gray-700 px-3 py-1 rounded-full text-sm transition">
+                            ← Wróć
+                        </button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div>
+                            <h3 class="text-3xl font-bold">${user.name}</h3>
+                            <p class="text-lg text-gray-400">${genderLabels[user.gender] || ''}</p>
+                        </div>
+                        
+                        <div class="bg-gray-600/50 rounded-lg p-3">
+                            <p class="text-sm text-gray-400 mb-1">Opis</p>
+                            <p class="text-white">${user.status || 'Brak opisu'}</p>
+                        </div>
+                        
+                        ${distance ? `
+                        <div class="bg-gray-600/50 rounded-lg p-3">
+                            <p class="text-sm text-gray-400 mb-1">Odległość</p>
+                            <p class="text-blue-400">📍 ~${distance} km od Ciebie</p>
+                        </div>
+                        ` : ''}
+                        
+                        <div class="bg-gray-600/50 rounded-lg p-3">
+                            <p class="text-sm text-gray-400 mb-1">Aktywność</p>
+                            <p class="${isOnline ? 'text-green-400' : 'text-gray-400'}">${isOnline ? '🟢 Teraz online' : '⚫ Offline'}</p>
+                        </div>
+                        
+                        ${likedMe ? `
+                        <div class="bg-pink-500/20 border border-pink-500/50 rounded-lg p-3 text-center">
+                            <p class="text-pink-400 font-medium">❤️ Ta osoba Cię polubiła!</p>
+                            <p class="text-sm text-gray-400 mt-1">Daj serduszko, żeby uzyskać match</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function switchProfilePhoto(userId, index) {
+            const user = tinderUsers.find(u => u.id === userId) || cachedUsers[userId];
+            if (!user) return;
+            currentPhotoIndex = index;
+            const photos = [user.avatar, user.avatar2].filter(p => p);
+            if (photos[index]) {
+                document.getElementById('profileMainPhoto').src = photos[index];
+                document.getElementById('photoDot0').classList.toggle('bg-white', index === 0);
+                document.getElementById('photoDot0').classList.toggle('bg-white/50', index !== 0);
+                document.getElementById('photoDot1').classList.toggle('bg-white', index === 1);
+                document.getElementById('photoDot1').classList.toggle('bg-white/50', index !== 1);
+            }
+        }
+        
+        function prevProfilePhoto(userId) {
+            const user = tinderUsers.find(u => u.id === userId) || cachedUsers[userId];
+            if (!user || !user.avatar2) return;
+            const newIndex = currentPhotoIndex === 0 ? 1 : 0;
+            switchProfilePhoto(userId, newIndex);
+        }
+        
+        function nextProfilePhoto(userId) {
+            const user = tinderUsers.find(u => u.id === userId) || cachedUsers[userId];
+            if (!user || !user.avatar2) return;
+            const newIndex = currentPhotoIndex === 0 ? 1 : 0;
+            switchProfilePhoto(userId, newIndex);
+        }
+        
+        let currentProfileTab = null;
+        
+        function showProfileInList(userId, fromTab) {
+            const user = cachedUsers[userId];
+            if (!user) return;
+            
+            currentProfileTab = fromTab;
+            currentPhotoIndex = 0;
+            
+            const likedMe = likedBy.some(l => l.from === user.id);
+            const iLiked = myLikes.includes(user.id);
+            const isMatch = myMatches.includes(user.id);
+            const isOnline = onlineUsers[user.id] ? true : false;
+            const distance = calculateDistance(user);
+            const isSkipped = myDislikes.some(d => d.odczytUserId === user.id);
+            const dislikeDoc = myDislikes.find(d => d.odczytUserId === user.id);
+            const hasSecondPhoto = user.avatar2 ? true : false;
+            
+            // Hide current list and show profile
+            document.getElementById('likesList').classList.add('hidden');
+            document.getElementById('matchesList').classList.add('hidden');
+            document.getElementById('myLikesList').classList.add('hidden');
+            document.getElementById('skippedList').classList.add('hidden');
+            document.getElementById('tinderCard').classList.remove('hidden');
+            document.getElementById('tinderButtons').classList.add('hidden');
+            
+            const container = document.getElementById('tinderCard');
+            
+            let actionButtons = '';
+            if (isMatch) {
+                actionButtons = `
+                    <button onclick="openChatFromMatch('${user.id}')" class="flex-1 py-3 bg-blue-500 hover:bg-blue-600 rounded-lg font-semibold transition">💬 Otwórz czat</button>
+                `;
+            } else if (isSkipped && dislikeDoc) {
+                actionButtons = `
+                    <button onclick="undoDislikeAndReturn('${dislikeDoc.odczytDocId}', '${user.id}')" class="flex-1 py-3 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition">❤️ Daj szansę</button>
+                `;
+            } else if (likedMe && !iLiked) {
+                actionButtons = `
+                    <button onclick="likeBackAndReturn('${user.id}')" class="flex-1 py-3 bg-pink-500 hover:bg-pink-600 rounded-lg font-semibold transition">❤️ Polub (Match!)</button>
+                `;
+            } else if (iLiked && !isMatch) {
+                actionButtons = `
+                    <button onclick="unlikeAndReturn('${user.id}')" class="flex-1 py-3 bg-red-500/50 hover:bg-red-600 rounded-lg font-semibold transition">💔 Cofnij polubienie</button>
+                `;
+            }
+            
+            container.innerHTML = `
+                <div class="bg-gray-700 rounded-2xl overflow-hidden">
+                    <div class="relative flex-shrink-0">
+                        <div id="photoContainer" class="relative">
+                            <img id="profileMainPhoto" src="${user.avatar}" class="w-full h-72 object-cover">
+                            ${hasSecondPhoto ? `
+                            <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+                                <button onclick="event.stopPropagation(); switchProfilePhoto('${user.id}', 0)" id="photoDot0" class="w-3 h-3 rounded-full bg-white transition"></button>
+                                <button onclick="event.stopPropagation(); switchProfilePhoto('${user.id}', 1)" id="photoDot1" class="w-3 h-3 rounded-full bg-white/50 transition"></button>
+                            </div>
+                            <button onclick="event.stopPropagation(); prevProfilePhoto('${user.id}')" class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition">◀</button>
+                            <button onclick="event.stopPropagation(); nextProfilePhoto('${user.id}')" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition">▶</button>
+                            ` : ''}
+                        </div>
+                        ${likedMe && !isMatch ? '<div class="absolute top-4 right-4 bg-pink-500 px-3 py-1 rounded-full text-sm font-bold">❤️ Lubi Cię!</div>' : ''}
+                        ${isMatch ? '<div class="absolute top-4 right-4 bg-green-500 px-3 py-1 rounded-full text-sm font-bold">💕 Match!</div>' : ''}
+                        <div class="absolute top-4 left-4 ${isOnline ? 'bg-green-500' : 'bg-gray-500'} px-3 py-1 rounded-full text-sm font-bold">
+                            ${isOnline ? '🟢 Online' : '⚫ Offline'}
+                        </div>
+                        <button onclick="returnToList()" class="absolute bottom-4 left-4 bg-gray-800/80 hover:bg-gray-700 px-4 py-2 rounded-full text-sm transition">
+                            ← Wróć do listy
+                        </button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div>
+                            <h3 class="text-2xl font-bold">${user.name}</h3>
+                            <p class="text-gray-400">${genderLabels[user.gender] || ''}</p>
+                        </div>
+                        
+                        <div class="bg-gray-600/50 rounded-lg p-3">
+                            <p class="text-sm text-gray-400 mb-1">Opis</p>
+                            <p class="text-white">${user.status || 'Brak opisu'}</p>
+                        </div>
+                        
+                        ${distance ? `
+                        <div class="bg-gray-600/50 rounded-lg p-3">
+                            <p class="text-sm text-gray-400 mb-1">Odległość</p>
+                            <p class="text-blue-400">📍 ~${distance} km od Ciebie</p>
+                        </div>
+                        ` : ''}
+                        
+                        <div class="bg-gray-600/50 rounded-lg p-3">
+                            <p class="text-sm text-gray-400 mb-1">Aktywność</p>
+                            <p class="${isOnline ? 'text-green-400' : 'text-gray-400'}">${isOnline ? '🟢 Teraz online' : '⚫ Offline'}</p>
+                        </div>
+                        
+                        ${actionButtons ? `<div class="flex gap-2 mt-4">${actionButtons}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function returnToList() {
+            document.getElementById('tinderCard').classList.add('hidden');
+            if (currentProfileTab === 'likes') {
+                showLikesList();
+            } else if (currentProfileTab === 'matches') {
+                showMatchesList();
+            } else if (currentProfileTab === 'mylikes') {
+                showMyLikesList();
+            } else if (currentProfileTab === 'skipped') {
+                showSkippedUsers();
+            }
+            currentProfileTab = null;
+        }
+        
+        async function likeBackAndReturn(userId) {
+            try {
+                await db.collection('likes').add({
+                    from: currentUser.id,
+                    to: userId,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                myLikes.push(userId);
+                
+                // Show match animation
+                const user = cachedUsers[userId];
+                if (user && isTinderModalOpen()) {
+                    matchedUser = user;
+                    showMatch(user);
+                }
+            } catch (error) {
+                console.error('Like back error:', error);
+            }
+        }
+        
+        async function unlikeAndReturn(userId) {
+            try {
+                const likeDocs = myLikesWithDocIds.filter(l => l.odczytUserId === userId);
+                for (const likeDoc of likeDocs) {
+                    await db.collection('likes').doc(likeDoc.odczytDocId).delete();
+                }
+                returnToList();
+            } catch (error) {
+                console.error('Unlike error:', error);
+            }
+        }
+        
+        async function undoDislikeAndReturn(docId, userId) {
+            try {
+                await db.collection('dislikes').doc(docId).delete();
+                await db.collection('likes').add({
+                    from: currentUser.id,
+                    to: userId,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                // Check if it's a match
+                const theyLikedMe = likedBy.some(l => l.from === userId);
+                if (theyLikedMe && isTinderModalOpen()) {
+                    const user = cachedUsers[userId];
+                    if (user) {
+                        matchedUser = user;
+                        showMatch(user);
+                    }
+                } else {
+                    returnToList();
+                }
+            } catch (error) {
+                console.error('Undo dislike error:', error);
+            }
+        }
+
+        async function swipeLeft() {
+            const user = tinderUsers[currentTinderIndex];
+            const card = document.querySelector('.tinder-card');
+            if (card) card.classList.add('swipe-left');
+            
+            // Save dislike to Firebase
+            if (user) {
+                await db.collection('dislikes').add({
+                    from: currentUser.id,
+                    to: user.id,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+            
+            setTimeout(() => {
+                currentTinderIndex++;
+                showCurrentTinderCard();
+            }, 300);
+        }
+
+        async function swipeRight() {
+            const user = tinderUsers[currentTinderIndex];
+            const card = document.querySelector('.tinder-card');
+            if (card) card.classList.add('swipe-right');
+            
+            // Check if it's a match
+            const theyLikedMe = likedBy.some(l => l.from === user.id);
+            
+            // Save my like
+            await db.collection('likes').add({
+                from: currentUser.id,
+                to: user.id,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            myLikes.push(user.id);
+            
+            setTimeout(() => {
+                if (theyLikedMe && isTinderModalOpen()) {
+                    // It's a match! Show only if Tinder modal is open
+                    matchedUser = user;
+                    showMatch(user);
+                } else {
+                    currentTinderIndex++;
+                    showCurrentTinderCard();
+                }
+            }, 300);
+        }
+
+        function showMatch(user) {
+            document.getElementById('matchAvatars').innerHTML = `
+                <img src="${currentUser.avatar}" class="w-24 h-24 rounded-full object-cover border-4 border-pink-500">
+                <div class="text-4xl">❤️</div>
+                <img src="${user.avatar}" class="w-24 h-24 rounded-full object-cover border-4 border-pink-500">
+            `;
+            document.getElementById('matchModal').classList.remove('hidden');
+            playNotificationSound();
+        }
+
+        function closeMatch() {
+            document.getElementById('matchModal').classList.add('hidden');
+            currentTinderIndex++;
+            showCurrentTinderCard();
+        }
+
+        function closeMatchAndChat() {
+            document.getElementById('matchModal').classList.add('hidden');
+            closeTinder();
+            if (matchedUser) {
+                cachedUsers[matchedUser.id] = matchedUser;
+                openChatWindow(matchedUser);
+            }
+        }
+
+        // Edit Profile
+        function openEditProfile() {
+            document.getElementById('editAvatarPreview').innerHTML = `<img src="${currentUser.avatar}" class="w-full h-full object-cover">`;
+            document.getElementById('editAvatarPreview').dataset.avatar = currentUser.avatar;
+            document.getElementById('editStatus').value = currentUser.status || '';
+            
+            // Set second photo
+            if (currentUser.avatar2) {
+                document.getElementById('editAvatar2Preview').innerHTML = `<img src="${currentUser.avatar2}" class="w-full h-full object-cover">`;
+                document.getElementById('editAvatar2Preview').dataset.avatar2 = currentUser.avatar2;
+                document.getElementById('removeAvatar2Btn').classList.remove('hidden');
+            } else {
+                document.getElementById('editAvatar2Preview').innerHTML = '<span class="text-4xl">➕</span>';
+                document.getElementById('editAvatar2Preview').dataset.avatar2 = '';
+                document.getElementById('removeAvatar2Btn').classList.add('hidden');
+            }
+            
+            // Set gender
+            const genderRadio = document.querySelector(`input[name="editGender"][value="${currentUser.gender || 'other'}"]`);
+            if (genderRadio) genderRadio.checked = true;
+            
+            document.getElementById('editProfileError').classList.add('hidden');
+            document.getElementById('editProfileModal').classList.remove('hidden');
+        }
+
+        function closeEditProfile() {
+            document.getElementById('editProfileModal').classList.add('hidden');
+        }
+
+        document.getElementById('editAvatarInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                try {
+                    const compressed = await compressImage(file, 512);
+                    document.getElementById('editAvatarPreview').innerHTML = `<img src="${compressed}" class="w-full h-full object-cover">`;
+                    document.getElementById('editAvatarPreview').dataset.avatar = compressed;
+                    document.getElementById('editProfileError').classList.add('hidden');
+                } catch (error) {
+                    document.getElementById('editProfileError').textContent = 'Błąd przy przetwarzaniu zdjęcia';
+                    document.getElementById('editProfileError').classList.remove('hidden');
+                }
+            }
+        });
+
+        document.getElementById('editAvatar2Input').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                try {
+                    const compressed = await compressImage(file, 512);
+                    document.getElementById('editAvatar2Preview').innerHTML = `<img src="${compressed}" class="w-full h-full object-cover">`;
+                    document.getElementById('editAvatar2Preview').dataset.avatar2 = compressed;
+                    document.getElementById('removeAvatar2Btn').classList.remove('hidden');
+                    document.getElementById('editProfileError').classList.add('hidden');
+                } catch (error) {
+                    document.getElementById('editProfileError').textContent = 'Błąd przy przetwarzaniu zdjęcia';
+                    document.getElementById('editProfileError').classList.remove('hidden');
+                }
+            }
+        });
+
+        function removeSecondPhoto() {
+            document.getElementById('editAvatar2Preview').innerHTML = '<span class="text-4xl">➕</span>';
+            document.getElementById('editAvatar2Preview').dataset.avatar2 = '';
+            document.getElementById('removeAvatar2Btn').classList.add('hidden');
+        }
+
+        async function saveProfile() {
+            const newAvatar = document.getElementById('editAvatarPreview').dataset.avatar;
+            const newAvatar2 = document.getElementById('editAvatar2Preview').dataset.avatar2 || null;
+            const newStatus = document.getElementById('editStatus').value.trim() || 'Online';
+            const genderEl = document.querySelector('input[name="editGender"]:checked');
+            const newGender = genderEl ? genderEl.value : currentUser.gender;
+            
+            document.getElementById('saveProfileText').classList.add('hidden');
+            document.getElementById('saveProfileLoader').classList.remove('hidden');
+            
+            try {
+                const updateData = {
+                    avatar: newAvatar,
+                    status: newStatus,
+                    gender: newGender
+                };
+                
+                if (newAvatar2) {
+                    updateData.avatar2 = newAvatar2;
+                } else {
+                    updateData.avatar2 = firebase.firestore.FieldValue.delete();
+                }
+                
+                await db.collection('users').doc(currentUser.id).update(updateData);
+                
+                currentUser.avatar = newAvatar;
+                currentUser.avatar2 = newAvatar2;
+                currentUser.status = newStatus;
+                currentUser.gender = newGender;
+                
+                document.getElementById('headerAvatar').innerHTML = `<img src="${newAvatar}" class="w-full h-full object-cover">`;
+                
+                if (userMarkers[currentUser.id]) {
+                    map.removeLayer(userMarkers[currentUser.id]);
+                    addUserMarker(currentUser, true);
+                }
+                updateOnlinePanel();
+                closeEditProfile();
+            } catch (error) {
+                document.getElementById('editProfileError').textContent = 'Błąd: ' + error.message;
+                document.getElementById('editProfileError').classList.remove('hidden');
+            }
+            
+            document.getElementById('saveProfileText').classList.remove('hidden');
+            document.getElementById('saveProfileLoader').classList.add('hidden');
+        }
+
+        async function logoutBanned() { await auth.signOut(); location.reload(); }
+
+        async function logout() {
+            try {
+                stopHeartbeat();
+                await db.collection('users').doc(currentUser.id).update({
+                    online: false,
+                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                await auth.signOut();
+                location.reload();
+            } catch (error) { console.error('Logout error:', error); }
+        }
+
+        // Report Functions
+        function openReportModal(userId) {
+            const user = onlineUsers[userId] || cachedUsers[userId] || allUsersForAdmin[userId];
+            if (!user) return;
+            reportingUserId = userId;
+            document.getElementById('reportUserInfo').innerHTML = `
+                <img src="${user.avatar}" class="w-12 h-12 rounded-full object-cover">
+                <div><p class="font-medium">${user.name}</p><p class="text-sm text-gray-400">${user.email || ''}</p></div>
+            `;
+            document.getElementById('reportReason').value = '';
+            document.getElementById('reportDescription').value = '';
+            document.getElementById('reportError').classList.add('hidden');
+            document.getElementById('reportModal').classList.remove('hidden');
+        }
+
+        function closeReportModal() { document.getElementById('reportModal').classList.add('hidden'); reportingUserId = null; }
+
+        async function submitReport() {
+            const reason = document.getElementById('reportReason').value;
+            const description = document.getElementById('reportDescription').value.trim();
+            if (!reason) { document.getElementById('reportError').textContent = 'Wybierz powód!'; document.getElementById('reportError').classList.remove('hidden'); return; }
+            
+            document.getElementById('reportButtonText').classList.add('hidden');
+            document.getElementById('reportLoader').classList.remove('hidden');
+            
+            try {
+                const chatId = getChatId(currentUser.id, reportingUserId);
+                const messagesSnapshot = await db.collection('chats').doc(chatId).collection('messages').orderBy('timestamp', 'asc').limit(50).get();
+                const chatMessages = [];
+                messagesSnapshot.forEach(doc => chatMessages.push({ id: doc.id, ...doc.data() }));
+                
+                await db.collection('reports').add({
+                    reporterId: currentUser.id,
+                    reporterName: currentUser.name,
+                    reporterAvatar: currentUser.avatar,
+                    reportedId: reportingUserId,
+                    reportedName: onlineUsers[reportingUserId]?.name || cachedUsers[reportingUserId]?.name || 'Nieznany',
+                    reportedAvatar: onlineUsers[reportingUserId]?.avatar || cachedUsers[reportingUserId]?.avatar || '',
+                    reason, description, chatMessages,
+                    status: 'pending',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                closeReportModal();
+                alert('Zgłoszenie wysłane!');
+            } catch (error) {
+                document.getElementById('reportError').textContent = 'Błąd: ' + error.message;
+                document.getElementById('reportError').classList.remove('hidden');
+            }
+            
+            document.getElementById('reportButtonText').classList.remove('hidden');
+            document.getElementById('reportLoader').classList.add('hidden');
+        }
+
+        // Admin Panel
+        function openAdminPanel() { document.getElementById('adminModal').classList.remove('hidden'); loadAllUsers(); loadReports(); }
+        function closeAdminPanel() { document.getElementById('adminModal').classList.add('hidden'); }
+
+        function switchAdminTab(tab) {
+            currentAdminTab = tab;
+            document.getElementById('adminTabUsers').classList.toggle('tab-active', tab === 'users');
+            document.getElementById('adminTabReports').classList.toggle('tab-active', tab === 'reports');
+            document.getElementById('adminTabAvatars').classList.toggle('tab-active', tab === 'avatars');
+            document.getElementById('adminUsersTab').classList.toggle('hidden', tab !== 'users');
+            document.getElementById('adminReportsTab').classList.toggle('hidden', tab !== 'reports');
+            document.getElementById('adminAvatarsTab').classList.toggle('hidden', tab !== 'avatars');
+            if (tab === 'avatars') renderAvatarGrid();
+        }
+        
+        let selectedAvatarUserId = null;
+        
+        function renderAvatarGrid() {
+            const container = document.getElementById('adminAvatarGrid');
+            const users = Object.values(allUsersForAdmin);
+            if (users.length === 0) { container.innerHTML = '<div class="text-center text-gray-400 py-8 col-span-full">Brak użytkowników</div>'; return; }
+            
+            container.innerHTML = users.map(user => `
+                <div class="relative group cursor-pointer" onclick="openAvatarActionModal('${user.id}')">
+                    <img src="${user.avatar}" class="w-24 h-24 rounded-xl object-cover border-3 ${user.isBanned ? 'border-red-500 opacity-50' : 'border-gray-600'} group-hover:border-blue-500 transition shadow-lg">
+                    ${user.isBanned ? '<div class="absolute inset-0 flex items-center justify-center"><span class="text-3xl">🚫</span></div>' : ''}
+                    ${user.isAdmin ? '<div class="absolute top-1 right-1 text-base bg-gray-900/70 rounded-full px-1">👑</div>' : ''}
+                    <p class="text-sm text-center mt-2 truncate max-w-24">${user.name}</p>
+                </div>
+            `).join('');
+        }
+        
+        function openAvatarActionModal(userId) {
+            const user = allUsersForAdmin[userId];
+            if (!user) return;
+            selectedAvatarUserId = userId;
+            document.getElementById('avatarActionImg').src = user.avatar;
+            document.getElementById('avatarActionName').textContent = user.name + (user.isAdmin ? ' 👑' : '');
+            document.getElementById('avatarActionEmail').textContent = user.email;
+            const isBanned = user.isBanned || false;
+            document.getElementById('avatarActionBadge').classList.toggle('hidden', !isBanned);
+            document.getElementById('avatarActionBan').classList.toggle('hidden', isBanned || user.id === currentUser.id);
+            document.getElementById('avatarActionUnban').classList.toggle('hidden', !isBanned);
+            document.getElementById('avatarActionReset').classList.toggle('hidden', user.id === currentUser.id);
+            document.getElementById('avatarActionModal').classList.remove('hidden');
+        }
+        
+        function closeAvatarActionModal() { document.getElementById('avatarActionModal').classList.add('hidden'); selectedAvatarUserId = null; }
+        
+        async function resetUserAvatar() {
+            if (!selectedAvatarUserId) return;
+            const user = allUsersForAdmin[selectedAvatarUserId];
+            const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`;
+            try {
+                await db.collection('users').doc(selectedAvatarUserId).update({ avatar: defaultAvatar });
+                allUsersForAdmin[selectedAvatarUserId].avatar = defaultAvatar;
+                renderAvatarGrid();
+                closeAvatarActionModal();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+        
+        async function banUserFromAvatar() {
+            if (!selectedAvatarUserId || !confirm('Zbanować tego użytkownika?')) return;
+            try {
+                await db.collection('users').doc(selectedAvatarUserId).update({ isBanned: true, online: false });
+                allUsersForAdmin[selectedAvatarUserId].isBanned = true;
+                renderAvatarGrid(); renderAdminUsers(); loadAllUsers(); closeAvatarActionModal();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+        
+        async function unbanUserFromAvatar() {
+            if (!selectedAvatarUserId) return;
+            try {
+                await db.collection('users').doc(selectedAvatarUserId).update({ isBanned: false });
+                allUsersForAdmin[selectedAvatarUserId].isBanned = false;
+                renderAvatarGrid(); renderAdminUsers(); loadAllUsers(); closeAvatarActionModal();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+
+        async function loadAllUsers() {
+            try {
+                const snapshot = await db.collection('users').get();
+                allUsersForAdmin = {};
+                let totalCount = 0, onlineCount = 0, bannedCount = 0;
+                snapshot.forEach(doc => {
+                    const user = { id: doc.id, ...doc.data() };
+                    allUsersForAdmin[user.id] = user;
+                    totalCount++;
+                    if (user.online) onlineCount++;
+                    if (user.isBanned) bannedCount++;
+                });
+                document.getElementById('statTotal').textContent = totalCount;
+                document.getElementById('statOnline').textContent = onlineCount;
+                document.getElementById('statBanned').textContent = bannedCount;
+                renderAdminUsers();
+            } catch (error) { console.error('Load users error:', error); }
+        }
+
+        function filterAdminUsers() { renderAdminUsers(); }
+
+        function renderAdminUsers() {
+            const container = document.getElementById('adminUsersList');
+            const searchTerm = document.getElementById('adminSearch').value.toLowerCase();
+            const users = Object.values(allUsersForAdmin)
+                .filter(user => user.name.toLowerCase().includes(searchTerm) || user.email.toLowerCase().includes(searchTerm))
+                .sort((a, b) => {
+                    if (a.isAdmin && !b.isAdmin) return -1;
+                    if (!a.isAdmin && b.isAdmin) return 1;
+                    if (a.online && !b.online) return -1;
+                    if (!a.online && b.online) return 1;
+                    return 0;
+                });
+
+            if (users.length === 0) { container.innerHTML = '<div class="text-center text-gray-400 py-8">Brak użytkowników</div>'; return; }
+
+            container.innerHTML = users.map(user => `
+                <div class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg ${user.isBanned ? 'opacity-50' : ''}">
+                    <img src="${user.avatar}" class="w-12 h-12 rounded-full object-cover border-2 ${user.online ? 'border-green-500' : 'border-gray-500'}">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="font-medium truncate">${user.name}</p>
+                            ${user.isAdmin ? '<span class="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded-full">ADMIN</span>' : ''}
+                            ${user.isBanned ? '<span class="text-xs bg-red-500 px-2 py-0.5 rounded-full">ZBANOWANY</span>' : ''}
+                            ${user.online && !user.isBanned ? '<span class="text-xs bg-green-500 px-2 py-0.5 rounded-full">ONLINE</span>' : ''}
+                        </div>
+                        <p class="text-sm text-gray-400 truncate">${user.email}</p>
+                    </div>
+                    <div class="flex gap-2 flex-wrap justify-end">
+                        ${user.online && user.lat && user.lng && !user.isBanned ? `<button onclick="showUserOnMap('${user.id}', ${user.lat}, ${user.lng})" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm transition">📍 Mapa</button>` : ''}
+                        ${user.id !== currentUser.id ? (user.isBanned ? `<button onclick="unbanUser('${user.id}')" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded-lg text-sm transition">✓ Odbanuj</button>` : `<button onclick="banUser('${user.id}')" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition">🚫 Zbanuj</button>`) : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function banUser(userId) {
+            if (!confirm('Zbanować tego użytkownika?')) return;
+            try {
+                await db.collection('users').doc(userId).update({ isBanned: true, online: false });
+                allUsersForAdmin[userId].isBanned = true;
+                renderAdminUsers(); loadAllUsers();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+
+        async function unbanUser(userId) {
+            try {
+                await db.collection('users').doc(userId).update({ isBanned: false });
+                allUsersForAdmin[userId].isBanned = false;
+                renderAdminUsers(); loadAllUsers();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+
+        function showUserOnMap(userId, lat, lng) {
+            closeAdminPanel();
+            if (map) map.flyTo([lat, lng], 16, { duration: 1.5 });
+        }
+
+        function listenForReports() {
+            db.collection('reports').where('status', '==', 'pending').onSnapshot(snapshot => {
+                const count = snapshot.size;
+                const badge = document.getElementById('adminReportsBadge');
+                const countEl = document.getElementById('reportsCount');
+                if (count > 0) {
+                    badge.textContent = count;
+                    badge.classList.remove('hidden');
+                    countEl.textContent = count;
+                    countEl.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                    countEl.classList.add('hidden');
+                }
+            });
+        }
+
+        async function loadReports() {
+            try {
+                const snapshot = await db.collection('reports').orderBy('createdAt', 'desc').get();
+                allReports = [];
+                snapshot.forEach(doc => allReports.push({ id: doc.id, ...doc.data() }));
+                renderReports();
+            } catch (error) { console.error('Load reports error:', error); }
+        }
+
+        function renderReports() {
+            const container = document.getElementById('adminReportsList');
+            if (allReports.length === 0) { container.innerHTML = '<div class="text-center text-gray-400 py-8">Brak zgłoszeń</div>'; return; }
+
+            container.innerHTML = allReports.map(report => {
+                const statusColors = { 'pending': 'bg-yellow-500', 'resolved': 'bg-green-500', 'dismissed': 'bg-gray-500' };
+                const statusLabels = { 'pending': 'Oczekuje', 'resolved': 'Rozwiązane', 'dismissed': 'Odrzucone' };
+                const date = report.createdAt?.toDate?.() || new Date();
+                return `
+                    <div class="p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition" onclick="showReportDetail('${report.id}')">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs ${statusColors[report.status]} px-2 py-0.5 rounded-full">${statusLabels[report.status]}</span>
+                            <span class="text-xs text-gray-400">${date.toLocaleDateString('pl-PL')}</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <img src="${report.reporterAvatar}" class="w-8 h-8 rounded-full object-cover">
+                                <span class="text-sm">${report.reporterName}</span>
+                            </div>
+                            <span class="text-gray-400">→</span>
+                            <div class="flex items-center gap-2">
+                                <img src="${report.reportedAvatar}" class="w-8 h-8 rounded-full object-cover">
+                                <span class="text-sm">${report.reportedName}</span>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-sm text-red-400">${reasonLabels[report.reason] || report.reason}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showReportDetail(reportId) {
+            const report = allReports.find(r => r.id === reportId);
+            if (!report) return;
+            
+            let chatHtml = '<p class="text-gray-400 text-sm">Brak wiadomości</p>';
+            if (report.chatMessages?.length > 0) {
+                chatHtml = report.chatMessages.map(msg => {
+                    const isReporter = msg.from === report.reporterId;
+                    return `
+                        <div class="flex ${isReporter ? 'justify-start' : 'justify-end'}">
+                            <div class="${isReporter ? 'bg-gray-600' : 'bg-blue-600'} rounded-lg px-3 py-2 max-w-[80%]">
+                                <p class="text-xs ${isReporter ? 'text-green-400' : 'text-red-400'} mb-1">${isReporter ? report.reporterName : report.reportedName}</p>
+                                <p class="text-sm">${msg.text}</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            document.getElementById('reportDetailContent').innerHTML = `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="p-3 bg-gray-700 rounded-lg">
+                            <p class="text-xs text-gray-400 mb-2">Zgłaszający:</p>
+                            <div class="flex items-center gap-2">
+                                <img src="${report.reporterAvatar}" class="w-10 h-10 rounded-full object-cover">
+                                <span class="font-medium">${report.reporterName}</span>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-gray-700 rounded-lg">
+                            <p class="text-xs text-gray-400 mb-2">Zgłoszony:</p>
+                            <div class="flex items-center gap-2">
+                                <img src="${report.reportedAvatar}" class="w-10 h-10 rounded-full object-cover">
+                                <span class="font-medium">${report.reportedName}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-3 bg-gray-700 rounded-lg">
+                        <p class="text-xs text-gray-400 mb-1">Powód:</p>
+                        <p class="text-red-400 font-medium">${reasonLabels[report.reason] || report.reason}</p>
+                        ${report.description ? `<p class="text-sm text-gray-300 mt-2">${report.description}</p>` : ''}
+                    </div>
+                    <div class="p-3 bg-gray-700 rounded-lg">
+                        <p class="text-xs text-gray-400 mb-3">Historia czatu:</p>
+                        <div class="space-y-2 max-h-48 overflow-y-auto">${chatHtml}</div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('reportDetailActions').innerHTML = report.status === 'pending' ? `
+                <button onclick="dismissReport('${report.id}')" class="flex-1 py-3 bg-gray-600 hover:bg-gray-500 rounded-lg transition">❌ Odrzuć</button>
+                <button onclick="banFromReport('${report.id}', '${report.reportedId}')" class="flex-1 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition">🚫 Zbanuj</button>
+            ` : '<p class="text-gray-400 text-center w-full">Rozpatrzone</p>';
+            
+            document.getElementById('reportDetailModal').classList.remove('hidden');
+        }
+
+        function closeReportDetail() { document.getElementById('reportDetailModal').classList.add('hidden'); }
+
+        async function dismissReport(reportId) {
+            try {
+                await db.collection('reports').doc(reportId).update({ status: 'dismissed' });
+                closeReportDetail(); loadReports();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+
+        async function banFromReport(reportId, userId) {
+            if (!confirm('Zbanować tego użytkownika?')) return;
+            try {
+                await db.collection('users').doc(userId).update({ isBanned: true, online: false });
+                await db.collection('reports').doc(reportId).update({ status: 'resolved' });
+                closeReportDetail(); loadReports(); loadAllUsers();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+
+        // User Hover Card
+        function showUserHoverCard(user, event) {
+            const card = document.getElementById('userHoverCard');
+            document.getElementById('hoverCardAvatar').src = user.avatar;
+            document.getElementById('hoverCardName').textContent = user.name + (user.isAdmin ? ' 👑' : '');
+            document.getElementById('hoverCardGender').textContent = genderLabels[user.gender] || '';
+            document.getElementById('hoverCardStatus').textContent = user.status || 'Online';
+            const x = event.clientX + 20;
+            const y = event.clientY - 120;
+            card.style.left = Math.min(x, window.innerWidth - 300) + 'px';
+            card.style.top = Math.max(y, 10) + 'px';
+            card.classList.remove('hidden');
+        }
+
+        function hideUserHoverCard() { document.getElementById('userHoverCard').classList.add('hidden'); }
+
+        // Map Functions
+        function initMap() {
+            const startLat = currentUser.lat || 52.2297;
+            const startLng = currentUser.lng || 21.0122;
+            map = L.map('map').setView([startLat, startLng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+            map.on('click', function(e) { setUserLocation(e.latlng.lat, e.latlng.lng); });
+            if (currentUser.lat && currentUser.lng) { addUserMarker(currentUser, true); closeInstructions(); }
+            ['onlinePanel', 'instructions', 'chatBubbles', 'chatWindows'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.addEventListener('mousedown', e => e.stopPropagation()); el.addEventListener('dblclick', e => e.stopPropagation()); }
+            });
+        }
+
+        async function setUserLocation(lat, lng) {
+            currentUser.lat = lat;
+            currentUser.lng = lng;
+            await db.collection('users').doc(currentUser.id).update({ lat, lng });
+            if (userMarkers[currentUser.id]) map.removeLayer(userMarkers[currentUser.id]);
+            addUserMarker(currentUser, true);
+            closeInstructions();
+        }
+
+        function addUserMarker(user, isCurrentUser = false) {
+            if (!user.lat || !user.lng) return;
+            const icon = L.divIcon({
+                className: 'custom-marker',
+                html: `<img src="${user.avatar}" class="user-marker ${isCurrentUser ? 'current-user pulse' : 'online'}" data-user-id="${user.id}">`,
+                iconSize: [50, 50],
+                iconAnchor: [25, 25]
+            });
+            const marker = L.marker([user.lat, user.lng], { icon }).addTo(map);
+            marker.on('mouseover', (e) => showUserHoverCard(user, e.originalEvent));
+            marker.on('mouseout', () => hideUserHoverCard());
+            if (!isCurrentUser) marker.on('click', () => openChatWindow(user));
+            userMarkers[user.id] = marker;
+        }
+
+        function listenForUsers() {
+            db.collection('users').where('online', '==', true).onSnapshot(snapshot => {
+                const now = Date.now();
+                Object.keys(userMarkers).forEach(id => { if (id !== currentUser.id) { map.removeLayer(userMarkers[id]); delete userMarkers[id]; } });
+                onlineUsers = {};
+                snapshot.forEach(doc => {
+                    const user = { id: doc.id, ...doc.data() };
+                    if (user.isBanned || user.id === currentUser.id) return;
+                    const lastSeenTime = user.lastSeen?.toDate?.()?.getTime() || 0;
+                    if ((now - lastSeenTime) < ONLINE_TIMEOUT) {
+                        onlineUsers[user.id] = user;
+                        cachedUsers[user.id] = user;
+                        addUserMarker(user, false);
+                        listenForMessages(user.id);
+                    } else {
+                        db.collection('users').doc(user.id).update({ online: false }).catch(() => {});
+                    }
+                });
+                updateOnlinePanel();
+            });
+        }
+
+        function updateOnlinePanel() {
+            const container = document.getElementById('onlineUsers');
+            const users = Object.values(onlineUsers);
+            document.getElementById('onlineCount').textContent = users.length + 1;
+            let html = `
+                <div class="flex items-center gap-2 p-2 rounded-lg bg-gray-700/50">
+                    <img src="${currentUser.avatar}" class="w-8 h-8 rounded-full object-cover border-2 border-amber-500" draggable="false">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium truncate">${currentUser.name} (Ty)</p>
+                        <p class="text-xs text-gray-400 truncate">${currentUser.status}</p>
+                    </div>
+                </div>
+            `;
+            html += users.map(user => `
+                <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-700/50 cursor-pointer transition user-item" data-user-id="${user.id}">
+                    <img src="${user.avatar}" class="w-8 h-8 rounded-full object-cover border-2 border-green-500" draggable="false">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium truncate">${user.name} ${user.isAdmin ? '👑' : ''}</p>
+                        <p class="text-xs text-gray-400 truncate">${user.status}</p>
+                    </div>
+                </div>
+            `).join('');
+            container.innerHTML = html;
+            container.querySelectorAll('.user-item').forEach(item => {
+                item.addEventListener('click', function(e) { e.stopPropagation(); const user = onlineUsers[item.dataset.userId]; if (user) openChatWindow(user); });
+            });
+        }
+
+        // Chat Functions
+        function getChatId(userId1, userId2) { return [userId1, userId2].sort().join('_'); }
+
+        function listenForMessages(userId) {
+            const chatId = getChatId(currentUser.id, userId);
+            if (chatListeners[chatId]) return;
+            let isFirstLoad = true;
+            chatListeners[chatId] = db.collection('chats').doc(chatId).collection('messages').orderBy('timestamp', 'asc').onSnapshot(snapshot => {
+                const oldUnread = unreadMessages[userId] || 0;
+                chats[userId] = [];
+                snapshot.forEach(doc => chats[userId].push({ id: doc.id, ...doc.data() }));
+                const unread = chats[userId].filter(m => m.from === userId && m.to === currentUser.id && !m.read).length;
+                const hasNewMessage = !isFirstLoad && unread > oldUnread;
+                if (openChats[userId] === 'open') {
+                    unreadMessages[userId] = 0;
+                    markMessagesAsRead(userId);
+                    renderMessages(userId);
+                } else {
+                    if (unread > 0) {
+                        unreadMessages[userId] = unread;
+                        if (openChats[userId] !== 'minimized') openChats[userId] = 'minimized';
+                        if (hasNewMessage) playNotificationSound();
+                    }
+                }
+                updateChatBubbles();
+                updateTitleBadge();
+                isFirstLoad = false;
+            });
+        }
+
+        function updateChatBubbles() {
+            const container = document.getElementById('chatBubbles');
+            const usersWithBubbles = Object.keys(openChats).filter(userId => openChats[userId] === 'minimized' && chats[userId]?.length > 0);
+            container.innerHTML = usersWithBubbles.map(userId => {
+                const user = onlineUsers[userId] || cachedUsers[userId] || allUsersForAdmin[userId];
+                if (!user) return '';
+                const unread = unreadMessages[userId] || 0;
+                return `
+                    <div class="chat-bubble relative cursor-pointer transform hover:scale-110 transition" data-user-id="${userId}">
+                        <img src="${user.avatar}" class="w-14 h-14 rounded-full border-3 border-blue-500 shadow-lg object-cover">
+                        ${unread > 0 ? `<span class="unread-badge absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold">${unread}</span>` : ''}
+                        <span class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 bg-gray-800 px-2 py-0.5 rounded text-xs whitespace-nowrap">${user.name}</span>
+                    </div>
+                `;
+            }).join('');
+            container.querySelectorAll('.chat-bubble').forEach(bubble => {
+                bubble.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const user = onlineUsers[bubble.dataset.userId] || cachedUsers[bubble.dataset.userId] || allUsersForAdmin[bubble.dataset.userId];
+                    if (user) openChatWindow(user);
+                });
+            });
+        }
+
+        function openChatWindow(user) {
+            if (openChats[user.id] === 'open') return;
+            unreadMessages[user.id] = 0;
+            openChats[user.id] = 'open';
+            listenForMessages(user.id);
+            markMessagesAsRead(user.id);
+            updateTitleBadge();
+            const container = document.getElementById('chatWindows');
+            const existing = document.getElementById(`chat-${user.id}`);
+            if (existing) existing.remove();
+            const chatWindow = document.createElement('div');
+            chatWindow.id = `chat-${user.id}`;
+            chatWindow.className = 'chat-window bg-gray-800 rounded-xl shadow-2xl w-72 flex flex-col overflow-hidden border border-gray-700';
+            chatWindow.style.maxHeight = '400px';
+            const isUserAdmin = user.isAdmin || false;
+            const isMatch = myMatches.includes(user.id);
+            const isOnline = onlineUsers[user.id] ? true : false;
+            chatWindow.innerHTML = `
+                <div class="p-3 bg-gray-700 flex items-center gap-2">
+                    <div class="relative">
+                        <img src="${user.avatar}" class="w-10 h-10 rounded-full object-cover">
+                        <span class="absolute bottom-0 right-0 w-3 h-3 ${isOnline ? 'bg-green-500' : 'bg-gray-500'} rounded-full border-2 border-gray-700"></span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-sm truncate">${user.name} ${isUserAdmin ? '👑' : ''} ${isMatch ? '<span class="text-pink-400">💕</span>' : ''}</p>
+                        <p class="text-xs text-gray-400 truncate">${isMatch ? '💕 Macie match!' : user.status}</p>
+                    </div>
+                    ${!isUserAdmin ? `<button class="report-btn p-1 hover:bg-red-500/50 rounded transition text-red-400" data-user-id="${user.id}" title="Zgłoś">🚨</button>` : ''}
+                    <button class="minimize-chat p-1 hover:bg-gray-500 rounded transition" data-user-id="${user.id}" title="Minimalizuj">➖</button>
+                    <button class="close-chat p-1 hover:bg-gray-500 rounded transition" data-user-id="${user.id}" title="Zamknij">✕</button>
+                </div>
+                <div id="messages-${user.id}" class="flex-1 p-3 overflow-y-auto space-y-2 bg-gray-800" style="min-height: 200px; max-height: 250px;"></div>
+                <div class="p-2 border-t border-gray-700 bg-gray-800">
+                    <div id="image-preview-${user.id}" class="hidden mb-2 relative">
+                        <img id="preview-img-${user.id}" src="" class="max-h-20 rounded-lg">
+                        <button onclick="cancelImageUpload('${user.id}')" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center">✕</button>
+                    </div>
+                    <div class="flex gap-1 items-center">
+                        <input type="file" id="image-input-${user.id}" accept="image/*" class="hidden">
+                        <button onclick="document.getElementById('image-input-${user.id}').click()" class="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition flex-shrink-0" title="Wyślij zdjęcie">📷</button>
+                        <input type="text" id="input-${user.id}" placeholder="Napisz..." class="flex-1 min-w-0 px-3 py-2 bg-gray-700 rounded-full text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <button class="send-btn p-2 bg-blue-500 hover:bg-blue-600 rounded-full transition flex-shrink-0" data-user-id="${user.id}">📤</button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(chatWindow);
+            const reportBtn = chatWindow.querySelector('.report-btn');
+            if (reportBtn) reportBtn.addEventListener('click', (e) => { e.stopPropagation(); openReportModal(user.id); });
+            chatWindow.querySelector('.minimize-chat').addEventListener('click', (e) => { e.stopPropagation(); minimizeChatWindow(user.id); });
+            chatWindow.querySelector('.close-chat').addEventListener('click', (e) => { e.stopPropagation(); closeChatWindow(user.id); });
+            const input = chatWindow.querySelector(`#input-${user.id}`);
+            input.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(user.id); });
+            chatWindow.querySelector('.send-btn').addEventListener('click', (e) => { e.stopPropagation(); sendMessage(user.id); });
+            chatWindow.addEventListener('mousedown', e => e.stopPropagation());
+            chatWindow.addEventListener('dblclick', e => e.stopPropagation());
+            
+            // Obsługa wyboru zdjęcia
+            const imageInput = document.getElementById(`image-input-${user.id}`);
+            imageInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const compressed = await compressImage(file, 100); // Max 100KB dla zdjęć w czacie
+                        const preview = document.getElementById(`image-preview-${user.id}`);
+                        const previewImg = document.getElementById(`preview-img-${user.id}`);
+                        previewImg.src = compressed;
+                        previewImg.dataset.image = compressed;
+                        preview.classList.remove('hidden');
+                    } catch (error) {
+                        console.error('Image compression error:', error);
+                    }
+                }
+            });
+            
+            renderMessages(user.id);
+            updateChatBubbles();
+            input.focus();
+        }
+
+        function minimizeChatWindow(userId) {
+            const chatWindow = document.getElementById(`chat-${userId}`);
+            if (chatWindow) chatWindow.remove();
+            openChats[userId] = 'minimized';
+            updateChatBubbles();
+            updateTitleBadge();
+        }
+
+        function closeChatWindow(userId) {
+            const chatWindow = document.getElementById(`chat-${userId}`);
+            if (chatWindow) chatWindow.remove();
+            delete openChats[userId];
+            unreadMessages[userId] = 0;
+            updateChatBubbles();
+            updateTitleBadge();
+        }
+
+        function renderMessages(userId) {
+            const container = document.getElementById(`messages-${userId}`);
+            if (!container) return;
+            const messages = chats[userId] || [];
+            container.innerHTML = messages.map(msg => {
+                const isMe = msg.from === currentUser.id;
+                const readStatus = isMe ? (msg.read ? '✓✓' : '✓') : '';
+                const readColor = msg.read ? 'text-green-400' : 'text-blue-200';
+                
+                let content = '';
+                if (msg.image) {
+                    content += `<img src="${msg.image}" class="max-w-full rounded-lg mb-1 cursor-pointer hover:opacity-90 transition" onclick="openImageModal('${msg.image.replace(/'/g, "\\'")}')">`;
+                }
+                if (msg.text) {
+                    content += `<p class="text-sm">${msg.text}</p>`;
+                }
+                
+                return `
+                    <div class="chat-message flex ${isMe ? 'justify-end' : 'justify-start'}">
+                        <div class="${isMe ? 'bg-blue-500' : 'bg-gray-700'} rounded-2xl px-3 py-2 max-w-[85%]">
+                            ${content}
+                            <p class="text-xs ${isMe ? 'text-blue-200' : 'text-gray-400'} mt-1 flex items-center justify-end gap-1">
+                                ${formatTime(msg.timestamp?.toDate?.() || new Date())}
+                                ${isMe ? `<span class="${readColor}">${readStatus}</span>` : ''}
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function markMessagesAsRead(userId) {
+            const chatId = getChatId(currentUser.id, userId);
+            try {
+                const snapshot = await db.collection('chats').doc(chatId).collection('messages').where('to', '==', currentUser.id).where('read', '==', false).get();
+                if (snapshot.empty) return;
+                const batch = db.batch();
+                snapshot.forEach(doc => batch.update(doc.ref, { read: true }));
+                await batch.commit();
+            } catch (error) { console.error('Mark as read error:', error); }
+        }
+
+        function cancelImageUpload(userId) {
+            const preview = document.getElementById(`image-preview-${userId}`);
+            const previewImg = document.getElementById(`preview-img-${userId}`);
+            const imageInput = document.getElementById(`image-input-${userId}`);
+            if (preview) preview.classList.add('hidden');
+            if (previewImg) {
+                previewImg.src = '';
+                previewImg.dataset.image = '';
+            }
+            if (imageInput) imageInput.value = '';
+        }
+
+        async function sendMessage(userId) {
+            const input = document.getElementById(`input-${userId}`);
+            const previewImg = document.getElementById(`preview-img-${userId}`);
+            const text = input.value.trim();
+            const image = previewImg?.dataset?.image || null;
+            
+            if (!text && !image) return;
+            
+            const chatId = getChatId(currentUser.id, userId);
+            try {
+                const messageData = {
+                    from: currentUser.id,
+                    to: userId,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    read: false
+                };
+                
+                if (text) messageData.text = text;
+                if (image) messageData.image = image;
+                
+                await db.collection('chats').doc(chatId).collection('messages').add(messageData);
+                input.value = '';
+                cancelImageUpload(userId);
+            } catch (error) { console.error('Send message error:', error); }
+        }
+
+        function formatTime(date) {
+            if (!date) return '';
+            return new Date(date).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function openImageModal(imageSrc) {
+            document.getElementById('modalImage').src = imageSrc;
+            document.getElementById('imageModal').classList.remove('hidden');
+        }
+
+        function closeImageModal() {
+            document.getElementById('imageModal').classList.add('hidden');
+            document.getElementById('modalImage').src = '';
+        }
+
+        function closeInstructions() {
+            const el = document.getElementById('instructions');
+            if (el) el.style.display = 'none';
+        }
+
+        window.onload = function() { initFirebase(); };
+    </script>
+</body>
+</html>
