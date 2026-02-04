@@ -204,8 +204,8 @@
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-sm font-medium mb-2">Opis</label>
-                        <input type="text" id="registerStatus" placeholder="Napisz coś o sobie..." class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                        <label class="block text-sm font-medium mb-2">Opis <span class="text-gray-500">(max 500 znaków)</span></label>
+                        <input type="text" id="registerStatus" placeholder="Napisz coś o sobie..." maxlength="500" class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
                 </div>
                 
@@ -492,7 +492,7 @@
             <div class="text-center mb-4">
                 <h3 id="avatarActionName" class="text-xl font-bold"></h3>
                 <p id="avatarActionEmail" class="text-sm text-gray-400"></p>
-                <span id="avatarActionBadge" class="hidden mt-2 inline-block text-xs bg-red-500 px-3 py-1 rounded-full">🚫 ZBANOWANY</span>
+                <span id="avatarActionBadge" class="mt-2 inline-block text-xs bg-red-500 px-3 py-1 rounded-full hidden">🚫 ZBANOWANY</span>
             </div>
             <div class="flex gap-3 justify-center flex-wrap">
                 <button id="avatarActionReset" onclick="resetUserAvatar()" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition">🔄 Zresetuj zdjęcie</button>
@@ -564,8 +564,8 @@
             </div>
             
             <div class="mb-4">
-                <label class="block text-sm font-medium mb-2">Opis</label>
-                <input type="text" id="editStatus" placeholder="Napisz coś o sobie..." class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <label class="block text-sm font-medium mb-2">Opis <span class="text-gray-500">(max 500 znaków)</span></label>
+                <input type="text" id="editStatus" placeholder="Napisz coś o sobie..." maxlength="500" class="w-full px-4 py-3 bg-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
             
             <div id="editProfileError" class="hidden mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm"></div>
@@ -2336,9 +2336,9 @@
                             <p class="text-xs text-gray-400 truncate">${user.email}</p>
                             
                             <!-- Opis -->
-                            <div class="flex items-center gap-2 mt-1">
+                            <div class="flex items-center gap-2 mt-1 max-w-full overflow-hidden">
                                 ${userStatus ? `
-                                    <p class="text-sm text-gray-300 truncate flex-1" title="${userStatus}">${userStatus}</p>
+                                    <p class="text-sm text-gray-300 truncate flex-1 max-w-[300px]" title="${userStatus.replace(/"/g, '&quot;')}">${userStatus.length > 80 ? userStatus.substring(0, 80) + '...' : userStatus}</p>
                                     <button onclick="event.stopPropagation(); clearUserStatusFromList('${user.id}')" class="text-xs px-2 py-1 bg-red-600/50 hover:bg-red-600 rounded transition flex-shrink-0" title="Skasuj opis">🗑️</button>
                                 ` : '<p class="text-sm text-gray-500 italic">Brak opisu</p>'}
                             </div>
@@ -2398,8 +2398,13 @@
             document.getElementById('avatarActionName').textContent = user.name + (user.isAdmin ? ' 👑' : '');
             document.getElementById('avatarActionEmail').textContent = user.email;
             
-            const isBanned = user.isBanned || false;
-            document.getElementById('avatarActionBadge').classList.toggle('hidden', !isBanned);
+            const isBanned = user.isBanned === true;
+            const badgeEl = document.getElementById('avatarActionBadge');
+            if (isBanned) {
+                badgeEl.classList.remove('hidden');
+            } else {
+                badgeEl.classList.add('hidden');
+            }
             document.getElementById('avatarActionBan').classList.toggle('hidden', isBanned || user.id === currentUser.id);
             document.getElementById('avatarActionUnban').classList.toggle('hidden', !isBanned);
             document.getElementById('avatarActionReset').classList.toggle('hidden', user.id === currentUser.id);
