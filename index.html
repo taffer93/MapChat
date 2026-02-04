@@ -473,10 +473,10 @@
             </div>
             
             <div id="adminAvatarsTab" class="flex-1 flex flex-col overflow-hidden hidden">
-                <p class="text-sm text-gray-400 mb-3">Kliknij na avatar, aby zobaczyć opcje moderacji.</p>
+                <p class="text-sm text-gray-400 mb-3">Kliknij na zdjęcie, aby powiększyć i zobaczyć opcje moderacji.</p>
                 <div class="flex-1 overflow-y-auto">
-                    <div id="adminAvatarGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 justify-items-center">
-                        <div class="text-center text-gray-400 py-8 col-span-full">Ładowanie...</div>
+                    <div id="adminAvatarGrid" class="space-y-3">
+                        <div class="text-center text-gray-400 py-8">Ładowanie...</div>
                     </div>
                 </div>
             </div>
@@ -485,23 +485,20 @@
     
     <!-- Avatar Action Modal -->
     <div id="avatarActionModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] hidden modal-overlay">
-        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div class="flex flex-col items-center mb-4">
-                <img id="avatarActionImg" src="" class="w-64 h-64 rounded-xl object-cover border-4 border-gray-600 mb-4 shadow-xl">
-                <h3 id="avatarActionName" class="text-lg font-bold"></h3>
-                <p id="avatarActionEmail" class="text-sm text-gray-400"></p>
-                <span id="avatarActionBadge" class="hidden mt-2 text-xs bg-red-500 px-2 py-1 rounded-full">ZBANOWANY</span>
-                <div id="avatarActionStatusSection" class="mt-3 w-full p-3 bg-gray-700 rounded-lg">
-                    <p class="text-xs text-gray-400 mb-1">Opis użytkownika:</p>
-                    <p id="avatarActionStatus" class="text-sm"></p>
-                </div>
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl">
+            <div class="flex flex-col items-center mb-6">
+                <img id="avatarActionImg" src="" class="w-72 h-72 rounded-xl object-cover border-4 border-gray-600 shadow-2xl">
             </div>
-            <div class="space-y-2">
-                <button id="avatarActionClearStatus" onclick="clearUserStatus()" class="hidden w-full py-3 bg-orange-600 hover:bg-orange-700 rounded-lg font-medium transition">🗑️ Skasuj opis</button>
-                <button id="avatarActionReset" onclick="resetUserAvatar()" class="w-full py-3 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition">🔄 Zresetuj avatar</button>
-                <button id="avatarActionBan" onclick="banUserFromAvatar()" class="w-full py-3 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition">🚫 Zbanuj</button>
-                <button id="avatarActionUnban" onclick="unbanUserFromAvatar()" class="hidden w-full py-3 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition">✓ Odbanuj</button>
-                <button onclick="closeAvatarActionModal()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition">Anuluj</button>
+            <div class="text-center mb-4">
+                <h3 id="avatarActionName" class="text-xl font-bold"></h3>
+                <p id="avatarActionEmail" class="text-sm text-gray-400"></p>
+                <span id="avatarActionBadge" class="hidden mt-2 inline-block text-xs bg-red-500 px-3 py-1 rounded-full">🚫 ZBANOWANY</span>
+            </div>
+            <div class="flex gap-3 justify-center flex-wrap">
+                <button id="avatarActionReset" onclick="resetUserAvatar()" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition">🔄 Zresetuj zdjęcie</button>
+                <button id="avatarActionBan" onclick="banUserFromAvatar()" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition">🚫 Zbanuj</button>
+                <button id="avatarActionUnban" onclick="unbanUserFromAvatar()" class="hidden px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition">✓ Odbanuj</button>
+                <button onclick="closeAvatarActionModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition">Zamknij</button>
             </div>
         </div>
     </div>
@@ -2299,34 +2296,94 @@
         function renderAvatarGrid() {
             const container = document.getElementById('adminAvatarGrid');
             const users = Object.values(allUsersForAdmin);
-            if (users.length === 0) { container.innerHTML = '<div class="text-center text-gray-400 py-8 col-span-full">Brak użytkowników</div>'; return; }
+            if (users.length === 0) { container.innerHTML = '<div class="text-center text-gray-400 py-8">Brak użytkowników</div>'; return; }
             
             let html = '';
             users.forEach(user => {
-                // Główny avatar
+                const isBanned = user.isBanned || false;
+                const hasSecondPhoto = user.avatar2 ? true : false;
+                const userStatus = user.status || '';
+                
                 html += `
-                    <div class="relative group cursor-pointer" onclick="openAvatarActionModal('${user.id}', 'avatar')">
-                        <img src="${user.avatar}" class="w-24 h-24 rounded-xl object-cover border-3 ${user.isBanned ? 'border-red-500 opacity-50' : 'border-gray-600'} group-hover:border-blue-500 transition shadow-lg">
-                        ${user.isBanned ? '<div class="absolute inset-0 flex items-center justify-center"><span class="text-3xl">🚫</span></div>' : ''}
-                        ${user.isAdmin ? '<div class="absolute top-1 right-1 text-base bg-gray-900/70 rounded-full px-1">👑</div>' : ''}
-                        <div class="absolute bottom-1 left-1 text-xs bg-blue-500 rounded px-1">1</div>
-                        <p class="text-sm text-center mt-2 truncate max-w-24">${user.name}</p>
+                    <div class="flex items-center gap-4 p-3 bg-gray-700 rounded-xl ${isBanned ? 'opacity-60' : ''}">
+                        <!-- Zdjęcia -->
+                        <div class="flex gap-2 flex-shrink-0">
+                            <div class="relative cursor-pointer group" onclick="openAvatarActionModal('${user.id}', 'avatar')">
+                                <img src="${user.avatar}" class="w-16 h-16 rounded-lg object-cover border-2 ${isBanned ? 'border-red-500' : 'border-gray-500'} group-hover:border-blue-500 transition">
+                                ${isBanned ? '<div class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50"><span class="text-xl">🚫</span></div>' : ''}
+                                <div class="absolute -bottom-1 -left-1 text-xs bg-blue-500 rounded px-1 font-bold">1</div>
+                            </div>
+                            ${hasSecondPhoto ? `
+                            <div class="relative cursor-pointer group" onclick="openAvatarActionModal('${user.id}', 'avatar2')">
+                                <img src="${user.avatar2}" class="w-16 h-16 rounded-lg object-cover border-2 ${isBanned ? 'border-red-500' : 'border-gray-500'} group-hover:border-blue-500 transition">
+                                ${isBanned ? '<div class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50"><span class="text-xl">🚫</span></div>' : ''}
+                                <div class="absolute -bottom-1 -left-1 text-xs bg-purple-500 rounded px-1 font-bold">2</div>
+                            </div>
+                            ` : `
+                            <div class="w-16 h-16 rounded-lg border-2 border-dashed border-gray-600 flex items-center justify-center text-gray-500 text-xs">
+                                Brak
+                            </div>
+                            `}
+                        </div>
+                        
+                        <!-- Info -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <p class="font-semibold">${user.name}</p>
+                                ${user.isAdmin ? '<span class="text-xs bg-yellow-500 text-black px-1.5 py-0.5 rounded font-bold">👑 ADMIN</span>' : ''}
+                                ${isBanned ? '<span class="text-xs bg-red-500 px-1.5 py-0.5 rounded font-bold">🚫 BAN</span>' : ''}
+                            </div>
+                            <p class="text-xs text-gray-400 truncate">${user.email}</p>
+                            
+                            <!-- Opis -->
+                            <div class="flex items-center gap-2 mt-1">
+                                ${userStatus ? `
+                                    <p class="text-sm text-gray-300 truncate flex-1" title="${userStatus}">${userStatus}</p>
+                                    <button onclick="event.stopPropagation(); clearUserStatusFromList('${user.id}')" class="text-xs px-2 py-1 bg-red-600/50 hover:bg-red-600 rounded transition flex-shrink-0" title="Skasuj opis">🗑️</button>
+                                ` : '<p class="text-sm text-gray-500 italic">Brak opisu</p>'}
+                            </div>
+                        </div>
+                        
+                        <!-- Akcje -->
+                        <div class="flex gap-2 flex-shrink-0">
+                            ${isBanned ? `
+                                <button onclick="event.stopPropagation(); unbanUserFromList('${user.id}')" class="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm transition" title="Odbanuj">✓</button>
+                            ` : user.id !== currentUser.id ? `
+                                <button onclick="event.stopPropagation(); banUserFromList('${user.id}')" class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition" title="Zbanuj">🚫</button>
+                            ` : ''}
+                        </div>
                     </div>
                 `;
-                // Drugie zdjęcie jeśli istnieje
-                if (user.avatar2) {
-                    html += `
-                        <div class="relative group cursor-pointer" onclick="openAvatarActionModal('${user.id}', 'avatar2')">
-                            <img src="${user.avatar2}" class="w-24 h-24 rounded-xl object-cover border-3 ${user.isBanned ? 'border-red-500 opacity-50' : 'border-gray-600'} group-hover:border-blue-500 transition shadow-lg">
-                            ${user.isBanned ? '<div class="absolute inset-0 flex items-center justify-center"><span class="text-3xl">🚫</span></div>' : ''}
-                            ${user.isAdmin ? '<div class="absolute top-1 right-1 text-base bg-gray-900/70 rounded-full px-1">👑</div>' : ''}
-                            <div class="absolute bottom-1 left-1 text-xs bg-purple-500 rounded px-1">2</div>
-                            <p class="text-sm text-center mt-2 truncate max-w-24">${user.name}</p>
-                        </div>
-                    `;
-                }
             });
             container.innerHTML = html;
+        }
+        
+        async function clearUserStatusFromList(userId) {
+            if (!confirm('Skasować opis tego użytkownika?')) return;
+            try {
+                await db.collection('users').doc(userId).update({ status: '' });
+                allUsersForAdmin[userId].status = '';
+                renderAvatarGrid();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+        
+        async function banUserFromList(userId) {
+            if (!confirm('Zbanować tego użytkownika?')) return;
+            try {
+                await db.collection('users').doc(userId).update({ isBanned: true, online: false });
+                allUsersForAdmin[userId].isBanned = true;
+                renderAvatarGrid();
+                renderAdminUsers();
+            } catch (error) { alert('Błąd: ' + error.message); }
+        }
+        
+        async function unbanUserFromList(userId) {
+            try {
+                await db.collection('users').doc(userId).update({ isBanned: false });
+                allUsersForAdmin[userId].isBanned = false;
+                renderAvatarGrid();
+                renderAdminUsers();
+            } catch (error) { alert('Błąd: ' + error.message); }
         }
         
         function openAvatarActionModal(userId, avatarType = 'avatar') {
@@ -2340,16 +2397,6 @@
             document.getElementById('avatarActionImg').src = imgSrc;
             document.getElementById('avatarActionName').textContent = user.name + (user.isAdmin ? ' 👑' : '');
             document.getElementById('avatarActionEmail').textContent = user.email;
-            
-            // Pokaż opis użytkownika
-            const statusEl = document.getElementById('avatarActionStatus');
-            statusEl.textContent = user.status || '(brak opisu)';
-            statusEl.classList.toggle('text-gray-500', !user.status);
-            statusEl.classList.toggle('italic', !user.status);
-            
-            // Pokaż/ukryj przycisk kasowania opisu
-            const clearStatusBtn = document.getElementById('avatarActionClearStatus');
-            clearStatusBtn.classList.toggle('hidden', !user.status || user.id === currentUser.id);
             
             const isBanned = user.isBanned || false;
             document.getElementById('avatarActionBadge').classList.toggle('hidden', !isBanned);
