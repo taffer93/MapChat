@@ -943,6 +943,35 @@
                             });
                         }
                     });
+                    
+                    // Obsługa odblokowania telefonu / powrotu do karty
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'visible' && currentUser) {
+                            // Strona jest widoczna - natychmiast wyślij heartbeat
+                            updateHeartbeat(user.uid);
+                            
+                            // Odśwież dane użytkowników
+                            setTimeout(() => {
+                                // Wymuś odświeżenie listy użytkowników
+                                db.collection('users').where('online', '==', true).get().then(snapshot => {
+                                    const now = Date.now();
+                                    snapshot.forEach(doc => {
+                                        const userData = { id: doc.id, ...doc.data() };
+                                        if (userData.isBanned || userData.id === currentUser.id) return;
+                                        const lastSeenTime = userData.lastSeen?.toDate?.()?.getTime() || 0;
+                                        if ((now - lastSeenTime) < ONLINE_TIMEOUT) {
+                                            if (!onlineUsers[userData.id]) {
+                                                onlineUsers[userData.id] = userData;
+                                                cachedUsers[userData.id] = userData;
+                                                addUserMarker(userData, false);
+                                            }
+                                        }
+                                    });
+                                    updateOnlinePanel();
+                                });
+                            }, 500);
+                        }
+                    });
                 }
             } catch (error) {
                 console.error('Load profile error:', error);
@@ -952,6 +981,16 @@
         function startHeartbeat(userId) {
             updateHeartbeat(userId);
             heartbeatInterval = setInterval(() => updateHeartbeat(userId), HEARTBEAT_INTERVAL);
+            
+            // Dodatkowy listener dla powrotu z uśpienia
+            document.addEventListener('visibilitychange', handleVisibilityForHeartbeat);
+        }
+        
+        function handleVisibilityForHeartbeat() {
+            if (document.visibilityState === 'visible' && currentUser) {
+                // Natychmiast wyślij heartbeat po powrocie
+                updateHeartbeat(currentUser.id);
+            }
         }
 
         function updateHeartbeat(userId) {
@@ -964,6 +1003,7 @@
 
         function stopHeartbeat() {
             if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+            document.removeEventListener('visibilitychange', handleVisibilityForHeartbeat);
         }
 
         function addRandomOffset(lat, lng) {
@@ -2789,11 +2829,39 @@
         function showChatUserProfile(userId) {
             const user = cachedUsers[userId] || onlineUsers[userId];
             if (!user) return;
-            openTinder();
-            setTimeout(() => {
-                cachedUsers[userId] = user;
-                showProfileInList(userId, 'matches');
-            }, 300);
+            
+            // Zapisz użytkownika do cache przed otwarciem
+            cachedUsers[userId] = user;
+            
+            // Otwórz modal Tinder ale od razu przełącz na profil
+            document.getElementById('tinderModal').classList.remove('hidden');
+            
+            // Ukryj wszystkie elementy Tindera
+            document.getElementById('tinderCard').classList.add('hidden');
+            document.getElementById('tinderButtons').classList.add('hidden');
+            document.getElementById('tinderButtons').classList.remove('flex');
+            document.getElementById('likesList').classList.add('hidden');
+            document.getElementById('matchesList').classList.add('hidden');
+            document.getElementById('myLikesList').classList.add('hidden');
+            document.getElementById('skippedList').classList.add('hidden');
+            document.getElementById('noMoreUsers').classList.add('hidden');
+            document.getElementById('noLikes').classList.add('hidden');
+            document.getElementById('noMatches').classList.add('hidden');
+            document.getElementById('noMyLikes').classList.add('hidden');
+            document.getElementById('noSkippedUsers').classList.add('hidden');
+            document.getElementById('genderFilterPanel').classList.add('hidden');
+            
+            // Ustaw zakładkę na matche (bez aktywowania)
+            tinderTab = 'matches';
+            document.getElementById('tinderTabDiscover').classList.remove('tab-active');
+            document.getElementById('tinderTabLikes').classList.remove('tab-active');
+            document.getElementById('tinderTabMatches').classList.add('tab-active');
+            document.getElementById('tinderTabMyLikes').classList.remove('tab-active');
+            document.getElementById('tinderTabSkipped').classList.remove('tab-active');
+            
+            // Od razu pokaż profil (bez ładowania Tindera)
+            document.getElementById('tinderCard').classList.remove('hidden');
+            showProfileInList(userId, 'matches');
         }
 
         function renderMessages(userId) {
