@@ -492,7 +492,9 @@
             <div class="text-center mb-4">
                 <h3 id="avatarActionName" class="text-xl font-bold"></h3>
                 <p id="avatarActionEmail" class="text-sm text-gray-400"></p>
-                <span id="avatarActionBadge" class="mt-2 inline-block text-xs bg-red-500 px-3 py-1 rounded-full hidden">🚫 ZBANOWANY</span>
+            </div>
+            <div id="avatarActionBannedInfo" class="hidden text-center mb-4">
+                <span class="inline-block text-sm bg-red-500 px-4 py-2 rounded-full font-bold">🚫 UŻYTKOWNIK ZBANOWANY</span>
             </div>
             <div class="flex gap-3 justify-center flex-wrap">
                 <button id="avatarActionReset" onclick="resetUserAvatar()" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition">🔄 Zresetuj zdjęcie</button>
@@ -2339,17 +2341,19 @@
                             <div class="flex items-center gap-2 mt-1 max-w-full overflow-hidden">
                                 ${userStatus ? `
                                     <p class="text-sm text-gray-300 truncate flex-1 max-w-[300px]" title="${userStatus.replace(/"/g, '&quot;')}">${userStatus.length > 80 ? userStatus.substring(0, 80) + '...' : userStatus}</p>
-                                    <button onclick="event.stopPropagation(); clearUserStatusFromList('${user.id}')" class="text-xs px-2 py-1 bg-red-600/50 hover:bg-red-600 rounded transition flex-shrink-0" title="Skasuj opis">🗑️</button>
                                 ` : '<p class="text-sm text-gray-500 italic">Brak opisu</p>'}
                             </div>
                         </div>
                         
                         <!-- Akcje -->
-                        <div class="flex gap-2 flex-shrink-0">
+                        <div class="flex flex-col gap-1 flex-shrink-0">
                             ${isBanned ? `
                                 <button onclick="event.stopPropagation(); unbanUserFromList('${user.id}')" class="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm transition" title="Odbanuj">✓</button>
                             ` : user.id !== currentUser.id ? `
                                 <button onclick="event.stopPropagation(); banUserFromList('${user.id}')" class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition" title="Zbanuj">🚫</button>
+                            ` : ''}
+                            ${userStatus && user.id !== currentUser.id ? `
+                                <button onclick="event.stopPropagation(); clearUserStatusFromList('${user.id}')" class="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm transition" title="Skasuj opis">🗑️</button>
                             ` : ''}
                         </div>
                     </div>
@@ -2398,16 +2402,43 @@
             document.getElementById('avatarActionName').textContent = user.name + (user.isAdmin ? ' 👑' : '');
             document.getElementById('avatarActionEmail').textContent = user.email;
             
+            // Sprawdź czy użytkownik jest zbanowany
             const isBanned = user.isBanned === true;
-            const badgeEl = document.getElementById('avatarActionBadge');
+            
+            // Pokaż/ukryj info o banie
+            const bannedInfoEl = document.getElementById('avatarActionBannedInfo');
             if (isBanned) {
-                badgeEl.classList.remove('hidden');
+                bannedInfoEl.classList.remove('hidden');
             } else {
-                badgeEl.classList.add('hidden');
+                bannedInfoEl.classList.add('hidden');
             }
-            document.getElementById('avatarActionBan').classList.toggle('hidden', isBanned || user.id === currentUser.id);
-            document.getElementById('avatarActionUnban').classList.toggle('hidden', !isBanned);
-            document.getElementById('avatarActionReset').classList.toggle('hidden', user.id === currentUser.id);
+            
+            // Pokaż/ukryj przyciski
+            const banBtn = document.getElementById('avatarActionBan');
+            const unbanBtn = document.getElementById('avatarActionUnban');
+            const resetBtn = document.getElementById('avatarActionReset');
+            
+            // Ukryj przycisk ban jeśli już zbanowany lub to ja
+            if (isBanned || user.id === currentUser.id) {
+                banBtn.classList.add('hidden');
+            } else {
+                banBtn.classList.remove('hidden');
+            }
+            
+            // Pokaż przycisk unban tylko dla zbanowanych
+            if (isBanned) {
+                unbanBtn.classList.remove('hidden');
+            } else {
+                unbanBtn.classList.add('hidden');
+            }
+            
+            // Ukryj reset dla siebie
+            if (user.id === currentUser.id) {
+                resetBtn.classList.add('hidden');
+            } else {
+                resetBtn.classList.remove('hidden');
+            }
+            
             document.getElementById('avatarActionModal').classList.remove('hidden');
         }
         
