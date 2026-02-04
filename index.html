@@ -485,14 +485,19 @@
     
     <!-- Avatar Action Modal -->
     <div id="avatarActionModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] hidden modal-overlay">
-        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex flex-col items-center mb-4">
                 <img id="avatarActionImg" src="" class="w-64 h-64 rounded-xl object-cover border-4 border-gray-600 mb-4 shadow-xl">
                 <h3 id="avatarActionName" class="text-lg font-bold"></h3>
                 <p id="avatarActionEmail" class="text-sm text-gray-400"></p>
                 <span id="avatarActionBadge" class="hidden mt-2 text-xs bg-red-500 px-2 py-1 rounded-full">ZBANOWANY</span>
+                <div id="avatarActionStatusSection" class="mt-3 w-full p-3 bg-gray-700 rounded-lg">
+                    <p class="text-xs text-gray-400 mb-1">Opis użytkownika:</p>
+                    <p id="avatarActionStatus" class="text-sm"></p>
+                </div>
             </div>
             <div class="space-y-2">
+                <button id="avatarActionClearStatus" onclick="clearUserStatus()" class="hidden w-full py-3 bg-orange-600 hover:bg-orange-700 rounded-lg font-medium transition">🗑️ Skasuj opis</button>
                 <button id="avatarActionReset" onclick="resetUserAvatar()" class="w-full py-3 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition">🔄 Zresetuj avatar</button>
                 <button id="avatarActionBan" onclick="banUserFromAvatar()" class="w-full py-3 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition">🚫 Zbanuj</button>
                 <button id="avatarActionUnban" onclick="unbanUserFromAvatar()" class="hidden w-full py-3 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition">✓ Odbanuj</button>
@@ -2296,23 +2301,56 @@
             const users = Object.values(allUsersForAdmin);
             if (users.length === 0) { container.innerHTML = '<div class="text-center text-gray-400 py-8 col-span-full">Brak użytkowników</div>'; return; }
             
-            container.innerHTML = users.map(user => `
-                <div class="relative group cursor-pointer" onclick="openAvatarActionModal('${user.id}')">
-                    <img src="${user.avatar}" class="w-24 h-24 rounded-xl object-cover border-3 ${user.isBanned ? 'border-red-500 opacity-50' : 'border-gray-600'} group-hover:border-blue-500 transition shadow-lg">
-                    ${user.isBanned ? '<div class="absolute inset-0 flex items-center justify-center"><span class="text-3xl">🚫</span></div>' : ''}
-                    ${user.isAdmin ? '<div class="absolute top-1 right-1 text-base bg-gray-900/70 rounded-full px-1">👑</div>' : ''}
-                    <p class="text-sm text-center mt-2 truncate max-w-24">${user.name}</p>
-                </div>
-            `).join('');
+            let html = '';
+            users.forEach(user => {
+                // Główny avatar
+                html += `
+                    <div class="relative group cursor-pointer" onclick="openAvatarActionModal('${user.id}', 'avatar')">
+                        <img src="${user.avatar}" class="w-24 h-24 rounded-xl object-cover border-3 ${user.isBanned ? 'border-red-500 opacity-50' : 'border-gray-600'} group-hover:border-blue-500 transition shadow-lg">
+                        ${user.isBanned ? '<div class="absolute inset-0 flex items-center justify-center"><span class="text-3xl">🚫</span></div>' : ''}
+                        ${user.isAdmin ? '<div class="absolute top-1 right-1 text-base bg-gray-900/70 rounded-full px-1">👑</div>' : ''}
+                        <div class="absolute bottom-1 left-1 text-xs bg-blue-500 rounded px-1">1</div>
+                        <p class="text-sm text-center mt-2 truncate max-w-24">${user.name}</p>
+                    </div>
+                `;
+                // Drugie zdjęcie jeśli istnieje
+                if (user.avatar2) {
+                    html += `
+                        <div class="relative group cursor-pointer" onclick="openAvatarActionModal('${user.id}', 'avatar2')">
+                            <img src="${user.avatar2}" class="w-24 h-24 rounded-xl object-cover border-3 ${user.isBanned ? 'border-red-500 opacity-50' : 'border-gray-600'} group-hover:border-blue-500 transition shadow-lg">
+                            ${user.isBanned ? '<div class="absolute inset-0 flex items-center justify-center"><span class="text-3xl">🚫</span></div>' : ''}
+                            ${user.isAdmin ? '<div class="absolute top-1 right-1 text-base bg-gray-900/70 rounded-full px-1">👑</div>' : ''}
+                            <div class="absolute bottom-1 left-1 text-xs bg-purple-500 rounded px-1">2</div>
+                            <p class="text-sm text-center mt-2 truncate max-w-24">${user.name}</p>
+                        </div>
+                    `;
+                }
+            });
+            container.innerHTML = html;
         }
         
-        function openAvatarActionModal(userId) {
+        function openAvatarActionModal(userId, avatarType = 'avatar') {
             const user = allUsersForAdmin[userId];
             if (!user) return;
             selectedAvatarUserId = userId;
-            document.getElementById('avatarActionImg').src = user.avatar;
+            selectedAvatarType = avatarType;
+            
+            // Pokaż odpowiedni avatar
+            const imgSrc = avatarType === 'avatar2' ? user.avatar2 : user.avatar;
+            document.getElementById('avatarActionImg').src = imgSrc;
             document.getElementById('avatarActionName').textContent = user.name + (user.isAdmin ? ' 👑' : '');
             document.getElementById('avatarActionEmail').textContent = user.email;
+            
+            // Pokaż opis użytkownika
+            const statusEl = document.getElementById('avatarActionStatus');
+            statusEl.textContent = user.status || '(brak opisu)';
+            statusEl.classList.toggle('text-gray-500', !user.status);
+            statusEl.classList.toggle('italic', !user.status);
+            
+            // Pokaż/ukryj przycisk kasowania opisu
+            const clearStatusBtn = document.getElementById('avatarActionClearStatus');
+            clearStatusBtn.classList.toggle('hidden', !user.status || user.id === currentUser.id);
+            
             const isBanned = user.isBanned || false;
             document.getElementById('avatarActionBadge').classList.toggle('hidden', !isBanned);
             document.getElementById('avatarActionBan').classList.toggle('hidden', isBanned || user.id === currentUser.id);
