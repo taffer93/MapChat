@@ -639,11 +639,14 @@
             </div>
 
             <div id="onlinePanel" class="absolute top-4 right-4 bg-gray-800/90 backdrop-blur rounded-lg p-4 max-w-xs z-[1000]">
-                <h3 class="font-semibold mb-2 flex items-center gap-2">
-                    <span class="w-2 h-2 bg-green-500 rounded-full pulse"></span>
-                    Online (<span id="onlineCount">0</span>)
-                </h3>
-                <div id="onlineUsers" class="space-y-2 max-h-48 overflow-y-auto">
+                <div class="flex items-center justify-between cursor-pointer" onclick="toggleOnlinePanel()">
+                    <h3 class="font-semibold flex items-center gap-2">
+                        <span class="w-2 h-2 bg-green-500 rounded-full pulse"></span>
+                        Online (<span id="onlineCount">0</span>)
+                    </h3>
+                    <button id="onlinePanelToggle" class="p-1 hover:bg-gray-700 rounded transition text-sm">➖</button>
+                </div>
+                <div id="onlineUsers" class="space-y-2 max-h-48 overflow-y-auto mt-2">
                     <div class="flex items-center justify-center py-4">
                         <div class="loader w-6 h-6"></div>
                     </div>
@@ -3084,6 +3087,20 @@
         function closeInstructions() {
             const el = document.getElementById('instructions');
             if (el) el.style.display = 'none';
+        }
+
+        let onlinePanelCollapsed = false;
+        function toggleOnlinePanel() {
+            const usersContainer = document.getElementById('onlineUsers');
+            const toggleBtn = document.getElementById('onlinePanelToggle');
+            onlinePanelCollapsed = !onlinePanelCollapsed;
+            if (onlinePanelCollapsed) {
+                usersContainer.classList.add('hidden');
+                toggleBtn.textContent = '➕';
+            } else {
+                usersContainer.classList.remove('hidden');
+                toggleBtn.textContent = '➖';
+            }
         }
 
         window.onload = function() { initFirebase(); };
