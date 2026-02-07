@@ -6,6 +6,33 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>MapChat - Znajdź ludzi w okolicy</title>
+    
+    <!-- Blokada starych przeglądarek -->
+    <script>
+        (function() {
+            // Sprawdź podstawowe funkcje nowoczesnych przeglądarek
+            var isModernBrowser = (
+                'fetch' in window &&
+                'Promise' in window &&
+                'assign' in Object &&
+                'from' in Array &&
+                'classList' in document.documentElement &&
+                typeof Symbol !== 'undefined'
+            );
+            
+            // Sprawdź czy Tailwind CSS zadziała (wymaga nowoczesnego CSS)
+            var supportsModernCSS = CSS && CSS.supports && CSS.supports('display', 'grid');
+            
+            // Opera Mini zawsze używa trybu oszczędzania danych
+            var isOperaMini = (navigator.userAgent.indexOf('Opera Mini') > -1);
+            
+            if (!isModernBrowser || !supportsModernCSS || isOperaMini) {
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1f2937;color:white;font-family:sans-serif;padding:20px;text-align:center;"><div><h1 style="font-size:48px;margin-bottom:20px;">⚠️</h1><h2 style="margin-bottom:10px;">Nieobsługiwana przeglądarka</h2><p style="color:#9ca3af;">Ta aplikacja wymaga nowoczesnej przeglądarki.<br>Użyj Chrome, Firefox, Safari lub Edge w najnowszej wersji.</p></div></div>';
+                });
+            }
+        })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -957,25 +984,38 @@
                             // Strona jest widoczna - natychmiast wyślij heartbeat
                             updateHeartbeat(user.uid);
                             
-                            // Odśwież dane użytkowników
+                            // Odśwież dane użytkowników - pełne odświeżenie
                             setTimeout(() => {
-                                // Wymuś odświeżenie listy użytkowników
+                                // Pobierz WSZYSTKICH użytkowników online z bazy
                                 db.collection('users').where('online', '==', true).get().then(snapshot => {
                                     const now = Date.now();
+                                    
+                                    // Najpierw usuń wszystkie stare markery (oprócz swojego)
+                                    Object.keys(userMarkers).forEach(id => {
+                                        if (id !== currentUser.id) {
+                                            map.removeLayer(userMarkers[id]);
+                                            delete userMarkers[id];
+                                        }
+                                    });
+                                    
+                                    // Zresetuj listę online użytkowników
+                                    onlineUsers = {};
+                                    
+                                    // Dodaj wszystkich aktywnych użytkowników
                                     snapshot.forEach(doc => {
                                         const userData = { id: doc.id, ...doc.data() };
                                         if (userData.isBanned || userData.id === currentUser.id) return;
                                         const lastSeenTime = userData.lastSeen?.toDate?.()?.getTime() || 0;
                                         if ((now - lastSeenTime) < ONLINE_TIMEOUT) {
-                                            if (!onlineUsers[userData.id]) {
-                                                onlineUsers[userData.id] = userData;
-                                                cachedUsers[userData.id] = userData;
-                                                addUserMarker(userData, false);
-                                            }
+                                            onlineUsers[userData.id] = userData;
+                                            cachedUsers[userData.id] = userData;
+                                            addUserMarker(userData, false);
+                                            listenForMessages(userData.id);
                                         }
                                     });
+                                    
                                     updateOnlinePanel();
-                                });
+                                }).catch(err => console.error('Refresh users error:', err));
                             }, 500);
                         }
                     });
